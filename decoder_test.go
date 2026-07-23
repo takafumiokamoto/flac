@@ -145,34 +145,84 @@ func TestReadStreamInfo(t *testing.T) {
 	}
 }
 
+// Expected values are documented in RFC 9639 Appendix D.
 func TestReadStreamInfoRealFile(t *testing.T) {
-	fPath := filepath.Join("testdata", "flac-specification", "example_1.flac")
-	f, err := os.ReadFile(fPath)
-	if err != nil {
-		t.Fatalf("readStreamInfo() failed to read test file %s, err:%v", fPath, err)
+	tests := []struct {
+		name    string
+		file    string
+		wantMD5 string
+		want    streamInfo
+	}{
+		{
+			// Appendix D.1.3
+			name:    "example_1",
+			file:    "example_1.flac",
+			wantMD5: "3e84b41807dc690307586a3dad1a2e0f",
+			want: streamInfo{
+				minBlockSize:  4096,
+				maxBlockSize:  4096,
+				minFrameSize:  15,
+				maxFrameSize:  15,
+				sampleRate:    44100,
+				channels:      2,
+				bitsPerSample: 16,
+				totalSamples:  1,
+			},
+		},
+		{
+			// Appendix D.2.3
+			name:    "example_2",
+			file:    "example_2.flac",
+			wantMD5: "d5b0564975e98b8d8b930422757b8103",
+			want: streamInfo{
+				minBlockSize:  16,
+				maxBlockSize:  16,
+				minFrameSize:  23,
+				maxFrameSize:  68,
+				sampleRate:    44100,
+				channels:      2,
+				bitsPerSample: 16,
+				totalSamples:  19,
+			},
+		},
+		{
+			// Appendix D.3.3; the MD5 is only in the hex dump of D.3.1
+			name:    "example_3",
+			file:    "example_3.flac",
+			wantMD5: "f8f9e396f5cbcfc6dc807f9977906b32",
+			want: streamInfo{
+				minBlockSize:  4096,
+				maxBlockSize:  4096,
+				minFrameSize:  31,
+				maxFrameSize:  31,
+				sampleRate:    32000,
+				channels:      1,
+				bitsPerSample: 8,
+				totalSamples:  24,
+			},
+		},
 	}
-	b, err := hex.DecodeString("3e84b41807dc690307586a3dad1a2e0f")
-	if err != nil || len(b) != 16 {
-		t.Fatalf("bad expected MD5 literal")
-	}
-	var wantMD5Sum = [16]byte{}
-	copy(wantMD5Sum[:], b)
-	want := streamInfo{
-		minBlockSize:  4096,
-		maxBlockSize:  4096,
-		minFrameSize:  15,
-		maxFrameSize:  15,
-		sampleRate:    44100,
-		channels:      2,
-		bitsPerSample: 16,
-		totalSamples:  1,
-		md5Sum:        wantMD5Sum,
-	}
-	got, err := readStreamInfo(bytes.NewReader(f[8:]))
-	if err != nil {
-		t.Fatalf("readStreamInfo() error = %v", err)
-	}
-	if diff := cmp.Diff(want, got, cmp.AllowUnexported(streamInfo{})); diff != "" {
-		t.Errorf("readStreamInfo() mismatch (-want +got):\n%s", diff)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fPath := filepath.Join("testdata", "flac-specification", tt.file)
+			f, err := os.ReadFile(fPath)
+			if err != nil {
+				t.Fatalf("readStreamInfo() failed to read test file %s, err:%v", fPath, err)
+			}
+			b, err := hex.DecodeString(tt.wantMD5)
+			if err != nil || len(b) != 16 {
+				t.Fatalf("bad expected MD5 literal %q", tt.wantMD5)
+			}
+			want := tt.want
+			copy(want.md5Sum[:], b)
+			got, err := readStreamInfo(bytes.NewReader(f[8:]))
+			if err != nil {
+				t.Fatalf("readStreamInfo() error = %v", err)
+			}
+			if diff := cmp.Diff(want, got, cmp.AllowUnexported(streamInfo{})); diff != "" {
+				t.Errorf("readStreamInfo() mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }
