@@ -1,15 +1,14 @@
 package flac
 
 import (
+	"errors"
 	"fmt"
 	"io"
-
-	"errors"
-	"slices"
 )
 
 type Decoder struct {
-	src io.Reader
+	src  io.Reader
+	info streamInfo
 }
 
 func NewDecoder(r io.Reader) (*Decoder, error) {
@@ -22,14 +21,18 @@ func NewDecoder(r io.Reader) (*Decoder, error) {
 		return nil, err
 	}
 	if metaHeader.blockType != metadataBlockTypeStreamInfo {
-		return nil, fmt.Errorf("the first metablock header type is not streaminfo %v", metaHeader.blockType)
+		return nil, fmt.Errorf("flac: first metadata block is not streaminfo, got type %d", metaHeader.blockType)
 	}
-	_, err = readStreamInfo(r)
+	if metaHeader.length != streamInfoLength {
+		return nil, fmt.Errorf("flac: invalid streaminfo length %d, want %d", metaHeader.length, streamInfoLength)
+	}
+	info, err := readStreamInfo(r)
 	if err != nil {
 		return nil, err
 	}
 	return &Decoder{
-		src: r,
+		src:  r,
+		info: info,
 	}, nil
 }
 
@@ -44,33 +47,36 @@ func validateMarker(r io.Reader) error {
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
 		return fmt.Errorf("flac: failed to validate marker(fLaC): %w", err)
 	}
-	if !slices.Equal(wantMarker[:], buf[:]) {
+	if wantMarker != buf {
 		return fmt.Errorf("flac: failed to validate marker got:% X", buf)
 	}
 	return nil
 }
+
+// streamInfoLength is the fixed size of a STREAMINFO metadata block: 272 bits = 34 bytes.
+const streamInfoLength = 34
 
 // readStreamInfo reads STREAMINFO metadata.
 // The streaminfo contains sample rate, number of channels and total number of interchannel samples.
 // For more information, see:
 // https://datatracker.ietf.org/doc/html/rfc9639#name-streaminfo
 func readStreamInfo(r io.Reader) (streamInfo, error) {
-	var buf = [34]byte{}
+	var buf = [streamInfoLength]byte{}
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
 		return streamInfo{}, fmt.Errorf("flac: failed to read Streaminfo: %w", err)
 	}
 	minBlockSize := uint16(buf[0])<<8 | uint16(buf[1])
 	maxBlockSize := uint16(buf[2])<<8 | uint16(buf[3])
-	minframeSize := uint32(buf[4])<<16 | uint32(buf[5])<<8 | uint32(buf[6])
-	maxframeSize := uint32(buf[7])<<16 | uint32(buf[8])<<8 | uint32(buf[9])
+	minFrameSize := uint32(buf[4])<<16 | uint32(buf[5])<<8 | uint32(buf[6])
+	maxFrameSize := uint32(buf[7])<<16 | uint32(buf[8])<<8 | uint32(buf[9])
 	sampleRate := (uint32(buf[10])<<16 | uint32(buf[11])<<8 | uint32(buf[12])) >> 4
 	// channels occupies bits 100-102 (byte 12 plus 4 bits), stored as (number of channels)-1.
 	// buf[12] holds bits 96-103: shift out the trailing bps bit, then mask the low 3 bits.
-	channels := (buf[12] >> 1 & 0x07) + 1
+	channels := ((buf[12] >> 1) & 0x07) + 1
 	// bitsPerSample occupies bits 103-107, spanning bytes 12-13, stored as (bits per sample)-1.
 	// The top bit is the last bit of buf[12] (mask 0x01), lifted 4 places to make room for
 	// the low 4 bits, which are the high nibble of buf[13] (the shift discards the rest).
-	bitsPerSample := (buf[12]&1<<4 | buf[13]>>4) + 1
+	bitsPerSample := ((buf[12]&1)<<4 | buf[13]>>4) + 1
 	// totalSamples occupies bits 108-143, spanning bytes 13-17
 	// buf[13] starts from index 104.
 	// buf[17] starts from index 136 to 143.
@@ -81,8 +87,8 @@ func readStreamInfo(r io.Reader) (streamInfo, error) {
 	return streamInfo{
 		minBlockSize:  minBlockSize,
 		maxBlockSize:  maxBlockSize,
-		minFrameSize:  minframeSize,
-		maxFrameSize:  maxframeSize,
+		minFrameSize:  minFrameSize,
+		maxFrameSize:  maxFrameSize,
 		sampleRate:    sampleRate,
 		channels:      channels,
 		bitsPerSample: bitsPerSample,

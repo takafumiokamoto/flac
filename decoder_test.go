@@ -3,11 +3,12 @@ package flac
 import (
 	"bytes"
 	"encoding/hex"
-	"github.com/google/go-cmp/cmp"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestValidateMarker(t *testing.T) {
@@ -74,6 +75,9 @@ func TestReadMetadataBlockHeader(t *testing.T) {
 			if (err != nil) != tt.wantErr {
 				t.Errorf("readMetadataBlockHeader() error = %v, wantErr %t", err, tt.wantErr)
 			}
+			if err != nil {
+				return
+			}
 			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(metadataBlockHeader{})); diff != "" {
 				t.Errorf("readMetadataBlockHeader() mismatch (-want +got):\n%s", diff)
 			}
@@ -81,11 +85,71 @@ func TestReadMetadataBlockHeader(t *testing.T) {
 	}
 }
 
+func TestReadStreamInfo(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   []byte
+		want    streamInfo
+		wantErr bool
+	}{
+		{
+			// example_1.flac leaves the byte-crossing bits at 0 (bps top bit,
+			// totalSamples high nibble), so this vector sets them.
+			name: "byte-crossing bits set",
+			input: []byte{
+				0x00, 0x10, // min block size: 16
+				0xFF, 0xFF, // max block size: 65535
+				0x00, 0x00, 0x00, // min frame size: unknown
+				0xFF, 0xFF, 0xFF, // max frame size: 16777215
+				0x12, 0x34, 0x4B, // sample rate: 0x12344 = 74564, channels: 0b101 + 1 = 6, bps top bit: 1
+				0x3A,                   // bps: 0b10011 + 1 = 20, totalSamples high nibble: 0xA
+				0x00, 0x00, 0x00, 0x01, // totalSamples low 32 bits
+				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // MD5
+				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+			},
+			want: streamInfo{
+				minBlockSize:  16,
+				maxBlockSize:  65535,
+				minFrameSize:  0,
+				maxFrameSize:  16777215,
+				sampleRate:    74564,
+				channels:      6,
+				bitsPerSample: 20,
+				totalSamples:  0xA_0000_0001,
+				md5Sum: [16]byte{
+					0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+					0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+				},
+			},
+		},
+		{
+			name:    "truncated",
+			input:   []byte{0x00, 0x10, 0xFF},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := readStreamInfo(bytes.NewReader(tt.input))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("readStreamInfo() error = %v, wantErr %t", err, tt.wantErr)
+			}
+			if err != nil {
+				return
+			}
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(streamInfo{})); diff != "" {
+				t.Errorf("readStreamInfo() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestReadStreamInfoRealFile(t *testing.T) {
-	fPath := filepath.Join("testdata", "/flac-specification/example_1.flac")
+	fPath := filepath.Join("testdata", "flac-specification", "example_1.flac")
 	f, err := os.ReadFile(fPath)
 	if err != nil {
-		t.Fatalf("readStreamInfo() faild to read test file %s, err:%v", fPath, err)
+		t.Fatalf("readStreamInfo() failed to read test file %s, err:%v", fPath, err)
 	}
 	b, err := hex.DecodeString("3e84b41807dc690307586a3dad1a2e0f")
 	if err != nil || len(b) != 16 {
@@ -106,7 +170,7 @@ func TestReadStreamInfoRealFile(t *testing.T) {
 	}
 	got, err := readStreamInfo(bytes.NewReader(f[8:]))
 	if err != nil {
-		t.Errorf("readStreamInfo() error = %v", err)
+		t.Fatalf("readStreamInfo() error = %v", err)
 	}
 	if diff := cmp.Diff(want, got, cmp.AllowUnexported(streamInfo{})); diff != "" {
 		t.Errorf("readStreamInfo() mismatch (-want +got):\n%s", diff)
