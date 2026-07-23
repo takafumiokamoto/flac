@@ -1,0 +1,6 @@
+[submodule "testdata/flac-test-files"]
+	path = testdata/flac-test-files
+	url = https://github.com/ietf-wg-cellar/flac-test-files.git
+[submodule "testdata/flac-specification"]
+	path = testdata/flac-specification
+	url = https://github.com/ietf-wg-cellar/flac-specification.git
