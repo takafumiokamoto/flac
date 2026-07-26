@@ -8,31 +8,21 @@ import (
 
 type Decoder struct {
 	src  io.Reader
-	info streamInfo
+	meta metadata
 }
 
 func NewDecoder(r io.Reader) (*Decoder, error) {
-	//https://datatracker.ietf.org/doc/html/rfc9639#section-6
+	// https://datatracker.ietf.org/doc/html/rfc9639#section-6
 	if err := validateMarker(r); err != nil {
 		return nil, err
 	}
-	metaHeader, err := readMetadataBlockHeader(r)
-	if err != nil {
-		return nil, err
-	}
-	if metaHeader.blockType != metadataBlockTypeStreamInfo {
-		return nil, fmt.Errorf("flac: first metadata block is not streaminfo, got type %d", metaHeader.blockType)
-	}
-	if metaHeader.length != streamInfoLength {
-		return nil, fmt.Errorf("flac: invalid streaminfo length %d, want %d", metaHeader.length, streamInfoLength)
-	}
-	info, err := readStreamInfo(r)
+	meta, err := readMetadata(r)
 	if err != nil {
 		return nil, err
 	}
 	return &Decoder{
 		src:  r,
-		info: info,
+		meta: meta,
 	}, nil
 }
 
@@ -40,15 +30,93 @@ func (d *Decoder) Decode() ([]byte, error) {
 	return nil, errors.New("not implemented")
 }
 
+var (
+	ErrFirstBlockIsNotStreamInfo = errors.New("flac: first metadata is not streaminfo")
+	ErrInvalidStremInfoLength    = errors.New("flac: invalid streamInfoLength")
+	ErrDuplicatedStreamInfo      = errors.New("flac: block type Streaminfo appears more than once.")
+	ErrDuplicatedSeekTable       = errors.New("flac: block type SeekTable appears more than once.")
+	ErrDuplicatedVorbisComment   = errors.New("flac: block type Vorbis Comment appears more than once.")
+)
+
+type metadata struct {
+	// Only streamInfo is needed for now.
+	streamInfo streamInfo
+}
+
+func readMetadata(r io.Reader) (metadata, error) {
+	firstMetaHeader, err := readMetadataBlockHeader(r)
+	if err != nil {
+		return metadata{}, err
+	}
+	if firstMetaHeader.blockType != metadataBlockTypeStreamInfo {
+		return metadata{}, fmt.Errorf("%w, got type %d",
+			ErrFirstBlockIsNotStreamInfo, firstMetaHeader.blockType)
+	}
+	if firstMetaHeader.length != streamInfoLength {
+		return metadata{}, fmt.Errorf("%w, length %d, want %d",
+			ErrInvalidStremInfoLength, firstMetaHeader.length, streamInfoLength)
+	}
+	st, err := readStreamInfo(r)
+	if err != nil {
+		return metadata{}, err
+	}
+	meta := metadata{
+		streamInfo: st,
+	}
+	if firstMetaHeader.isLast {
+		return meta, nil
+	}
+	var (
+		typeSeekTableExists     = false
+		typeVorbisCommentExists = false
+	)
+	for {
+		metaHeader, err := readMetadataBlockHeader(r)
+		if err != nil {
+			return metadata{}, err
+		}
+		switch metaHeader.blockType {
+		case metadataBlockTypeStreamInfo:
+			return metadata{}, ErrDuplicatedStreamInfo
+		case metadataBlockTypeSeekTable:
+			if typeSeekTableExists {
+				return metadata{}, ErrDuplicatedSeekTable
+			}
+			typeSeekTableExists = true
+		case metadataBlockTypeVorbisComment:
+			if typeVorbisCommentExists {
+				return metadata{}, ErrDuplicatedVorbisComment
+			}
+			typeVorbisCommentExists = true
+		default:
+		}
+		// skip all metadata except for streamInfo.
+		if err := skipMetadata(r, metaHeader); err != nil {
+			return metadata{}, err
+		}
+		if metaHeader.isLast {
+			break
+		}
+	}
+	return meta, nil
+}
+
+func skipMetadata(r io.Reader, metadataHeader metadataBlockHeader) error {
+	if _, err := io.CopyN(io.Discard, r, int64(metadataHeader.length)); err != nil {
+		return fmt.Errorf("flac: failed to skip metadata block (type %d): %w", metadataHeader.blockType, err)
+	}
+	return nil
+}
+
 // validateMarker validates the FLAC marker, "fLaC"
 func validateMarker(r io.Reader) error {
 	var wantMarker = [4]byte{'f', 'L', 'a', 'C'}
 	var buf = [4]byte{}
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
-		return fmt.Errorf("flac: failed to validate marker(fLaC): %w", err)
+		return fmt.Errorf("flac: failed to validate marker (fLaC): %w", err)
 	}
 	if wantMarker != buf {
-		return fmt.Errorf("flac: failed to validate marker got:% X", buf)
+		return fmt.Errorf("flac: failed to validate marker, got: % X", buf)
 	}
 	return nil
 }
@@ -57,7 +125,8 @@ func validateMarker(r io.Reader) error {
 const streamInfoLength = 34
 
 // readStreamInfo reads STREAMINFO metadata.
-// The streaminfo contains sample rate, number of channels and total number of interchannel samples.
+// The streaminfo block contains information about the whole stream, such as
+// the sample rate, the number of channels, and the total number of interchannel samples.
 // For more information, see:
 // https://datatracker.ietf.org/doc/html/rfc9639#name-streaminfo
 func readStreamInfo(r io.Reader) (streamInfo, error) {
@@ -77,14 +146,13 @@ func readStreamInfo(r io.Reader) (streamInfo, error) {
 	// The top bit is the last bit of buf[12] (mask 0x01), lifted 4 places to make room for
 	// the low 4 bits, which are the high nibble of buf[13] (the shift discards the rest).
 	bitsPerSample := ((buf[12]&1)<<4 | buf[13]>>4) + 1
-	// totalSamples occupies bits 108-143, spanning bytes 13-17
-	// buf[13] starts from index 104.
-	// buf[17] starts from index 136 to 143.
+	// totalSamples occupies bits 108-143, spanning bytes 13-17.
+	// buf[13] starts at bit 104.
+	// buf[17] covers bits 136 to 143.
 	totalSamples := uint64(buf[13]&0x0f)<<32 | uint64(buf[14])<<24 | uint64(buf[15])<<16 | uint64(buf[16])<<8 | uint64(buf[17])
 	var md5Sum = [16]byte{}
 	copy(md5Sum[:], buf[18:34])
-
-	return streamInfo{
+	st := streamInfo{
 		minBlockSize:  minBlockSize,
 		maxBlockSize:  maxBlockSize,
 		minFrameSize:  minFrameSize,
@@ -94,7 +162,28 @@ func readStreamInfo(r io.Reader) (streamInfo, error) {
 		bitsPerSample: bitsPerSample,
 		totalSamples:  totalSamples,
 		md5Sum:        md5Sum,
-	}, nil
+	}
+	if err := validateStreamInfo(st); err != nil {
+		return streamInfo{}, err
+	}
+	return st, nil
+}
+
+func validateStreamInfo(s streamInfo) error {
+	// The minimum block size should be within 16...65535, but the maximum value
+	// of uint16 is exactly 65535, so only the lower bound is checked.
+	if s.minBlockSize < 16 {
+		return fmt.Errorf("flac: minimum block size in streaminfo isn't in 16-65535 range: %d", s.minBlockSize)
+	}
+	// The maximum block size should be within 16...65535, but the maximum value
+	// of uint16 is exactly 65535, so only the lower bound is checked.
+	if s.maxBlockSize < 16 {
+		return fmt.Errorf("flac: maximum block size in streaminfo isn't in 16-65355 range: %d", s.maxBlockSize)
+	}
+	if s.maxBlockSize < s.minBlockSize {
+		return fmt.Errorf("flac: minimum block size is greater than maximum block size: min:%d, max:%d", s.minBlockSize, s.maxBlockSize)
+	}
+	return nil
 }
 
 type streamInfo struct {
@@ -112,8 +201,14 @@ type streamInfo struct {
 type metadataBlockType uint8
 
 const (
-	metadataBlockTypeForbidden  metadataBlockType = 127
-	metadataBlockTypeStreamInfo metadataBlockType = 0
+	metadataBlockTypeStreamInfo    metadataBlockType = 0
+	metadataBlockTypePadding       metadataBlockType = 1
+	metadataBlockTypeApplication   metadataBlockType = 2
+	metadataBlockTypeSeekTable     metadataBlockType = 3
+	metadataBlockTypeVorbisComment metadataBlockType = 4
+	metadataBlockTypeCueSheet      metadataBlockType = 5
+	metadataBlockTypePicture       metadataBlockType = 6
+	metadataBlockTypeForbidden     metadataBlockType = 127
 )
 
 type metadataBlockHeader struct {
@@ -135,7 +230,7 @@ func readMetadataBlockHeader(r io.Reader) (metadataBlockHeader, error) {
 	h := metadataBlockHeader{
 		isLast:    buf[0]&0x80 != 0,
 		blockType: blockType,
-		// The last three bytes of the metadata header encode the payload length as 24-bit big-endian integer.
+		// The last three bytes of the metadata header encode the payload length as a 24-bit big-endian integer.
 		length: uint32(buf[1])<<16 | uint32(buf[2])<<8 | uint32(buf[3]),
 	}
 	if h.blockType == metadataBlockTypeForbidden {

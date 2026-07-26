@@ -3,8 +3,11 @@ package flac
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -76,6 +79,7 @@ func TestReadMetadataBlockHeader(t *testing.T) {
 				t.Errorf("readMetadataBlockHeader() error = %v, wantErr %t", err, tt.wantErr)
 			}
 			if err != nil {
+				t.Logf("expected error: %v", err)
 				return
 			}
 			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(metadataBlockHeader{})); diff != "" {
@@ -127,6 +131,51 @@ func TestReadStreamInfo(t *testing.T) {
 			input:   []byte{0x00, 0x10, 0xFF},
 			wantErr: true,
 		},
+		{
+			name: "minimum block size is invalid",
+			input: []byte{
+				0x00, 0x0f, // min block size: 15
+				0xFF, 0xFF, // max block size: 65535
+				0x00, 0x00, 0x00, // min frame size: unknown
+				0xFF, 0xFF, 0xFF, // max frame size: 16777215
+				0x12, 0x34, 0x4B, // sample rate: 0x12344 = 74564, channels: 0b101 + 1 = 6, bps top bit: 1
+				0x3A,                   // bps: 0b10011 + 1 = 20, totalSamples high nibble: 0xA
+				0x00, 0x00, 0x00, 0x01, // totalSamples low 32 bits
+				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // MD5
+				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+			},
+			wantErr: true,
+		},
+		{
+			name: "maximum block size is invalid",
+			input: []byte{
+				0x00, 0x10, // min block size: 16
+				0x00, 0x0f, // max block size: 15
+				0x00, 0x00, 0x00, // min frame size: unknown
+				0xFF, 0xFF, 0xFF, // max frame size: 16777215
+				0x12, 0x34, 0x4B, // sample rate: 0x12344 = 74564, channels: 0b101 + 1 = 6, bps top bit: 1
+				0x3A,                   // bps: 0b10011 + 1 = 20, totalSamples high nibble: 0xA
+				0x00, 0x00, 0x00, 0x01, // totalSamples low 32 bits
+				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // MD5
+				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+			},
+			wantErr: true,
+		},
+		{
+			name: "minimum block size is greater than maximum block size",
+			input: []byte{
+				0x00, 0x11, // min block size: 17
+				0x00, 0x10, // max block size: 16
+				0x00, 0x00, 0x00, // min frame size: unknown
+				0xFF, 0xFF, 0xFF, // max frame size: 16777215
+				0x12, 0x34, 0x4B, // sample rate: 0x12344 = 74564, channels: 0b101 + 1 = 6, bps top bit: 1
+				0x3A,                   // bps: 0b10011 + 1 = 20, totalSamples high nibble: 0xA
+				0x00, 0x00, 0x00, 0x01, // totalSamples low 32 bits
+				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // MD5
+				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -136,6 +185,7 @@ func TestReadStreamInfo(t *testing.T) {
 				t.Errorf("readStreamInfo() error = %v, wantErr %t", err, tt.wantErr)
 			}
 			if err != nil {
+				t.Logf("expected error: %v", err)
 				return
 			}
 			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(streamInfo{})); diff != "" {
@@ -224,5 +274,145 @@ func TestReadStreamInfoRealFile(t *testing.T) {
 				t.Errorf("readStreamInfo() mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+var (
+	validStreamInfoHeader = []byte{
+		0x00, 0x00, 0x00, 0x22, // streaminfo header
+	}
+	seekTableMetadata = []byte{
+		0x03, 0x00, 0x00, 0x01, 0x00,
+	}
+	vorbisCommentMetadata = []byte{
+		0x04, 0x00, 0x00, 0x01, 0x00,
+	}
+	validStreamInfoBytes = []byte{
+		0x00, 0x10, // min block size: 16
+		0xFF, 0xFF, // max block size: 65535
+		0x00, 0x00, 0x00, // min frame size: unknown
+		0xFF, 0xFF, 0xFF, // max frame size: 16777215
+		0x12, 0x34, 0x4B, // sample rate: 0x12344 = 74564, channels: 0b101 + 1 = 6, bps top bit: 1
+		0x3A,                   // bps: 0b10011 + 1 = 20, totalSamples high nibble: 0xA
+		0x00, 0x00, 0x00, 0x01, // totalSamples low 32 bits
+		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // MD5
+		0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+	}
+)
+
+func TestReadMetadata(t *testing.T) {
+	wantStreamInfo := streamInfo{
+		minBlockSize:  16,
+		maxBlockSize:  65535,
+		minFrameSize:  0,
+		maxFrameSize:  16777215,
+		sampleRate:    74564,
+		channels:      6,
+		bitsPerSample: 20,
+		totalSamples:  0xA_0000_0001,
+		md5Sum: [16]byte{
+			0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+			0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+		},
+	}
+	tests := []struct {
+		name    string
+		input   []byte
+		want    metadata
+		wantErr error
+	}{
+		{"empty", nil, metadata{}, io.EOF},
+		{"first metadata is not a streamInfo",
+			[]byte{0x81, //padding
+				0x00, 0x00, 0x22},
+			metadata{}, ErrFirstBlockIsNotStreamInfo},
+		{"length of streaminfo is not 34bytes",
+			[]byte{0x80, //streamInfo
+				0x00, 0x00,
+				0x23, // 35bytes
+			},
+			metadata{}, ErrInvalidStremInfoLength},
+		{"first metadata header is streamInfo and last metadata",
+			slices.Concat([]byte{0x80, 0x00, 0x00, 0x22}, validStreamInfoBytes, []byte{}),
+			metadata{
+				streamInfo: wantStreamInfo,
+			}, nil},
+		{"duplicate streamInfo",
+			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, validStreamInfoHeader),
+			metadata{
+				streamInfo: wantStreamInfo,
+			}, ErrDuplicatedStreamInfo},
+		{"duplicate seek table",
+			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, seekTableMetadata, seekTableMetadata),
+			metadata{
+				streamInfo: wantStreamInfo,
+			}, ErrDuplicatedSeekTable},
+		{"duplicate vorbis comment",
+			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, vorbisCommentMetadata, vorbisCommentMetadata),
+			metadata{
+				streamInfo: wantStreamInfo,
+			}, ErrDuplicatedVorbisComment},
+		{"skip other metadata",
+			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, []byte{0x81, 0x00, 0x00, 0x01, 0x01}),
+			metadata{
+				streamInfo: wantStreamInfo,
+			},
+			nil,
+		},
+		{"doesn't reject Padding",
+			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, []byte{0x81, 0x00, 0x00, 0x01, 0x01}),
+			metadata{
+				streamInfo: wantStreamInfo,
+			},
+			nil,
+		},
+		{"doesn't reject Application",
+			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, []byte{0x82, 0x00, 0x00, 0x01, 0x01}),
+			metadata{
+				streamInfo: wantStreamInfo,
+			},
+			nil,
+		},
+		{"doesn't reject CueSheet",
+			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, []byte{0x85, 0x00, 0x00, 0x01, 0x01}),
+			metadata{
+				streamInfo: wantStreamInfo,
+			},
+			nil,
+		},
+		{"doesn't reject Picture",
+			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, []byte{0x86, 0x00, 0x00, 0x01, 0x01}),
+			metadata{
+				streamInfo: wantStreamInfo,
+			},
+			nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := readMetadata(bytes.NewReader(tt.input))
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("readMetadata() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr != nil {
+				return
+			}
+			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(metadata{}, streamInfo{})); diff != "" {
+				t.Errorf("readMetadata() mismatch (-want +gor):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestReadMetadataDoesntRejectReserved(t *testing.T) {
+	baseMetadata := slices.Concat(validStreamInfoHeader, validStreamInfoBytes)
+	testMetaHeader := []byte{0x80, 0x00, 0x00, 0x01, 0x01}
+	for i := 7; i <= 126; i++ {
+		testMetaHeader[0] = 0x80 | byte(i)
+		_, err := readMetadata(bytes.NewReader(slices.Concat(baseMetadata, testMetaHeader)))
+		if err != nil {
+			t.Errorf("readMetadata() rejected block type %d, err:%v", i, err)
+		}
 	}
 }
