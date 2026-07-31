@@ -20,6 +20,11 @@ func TestDecodeCodedNumber(t *testing.T) {
 		{"second byte doesn't start with 0b10", []byte{0xC0, 0xFF}, want{0, 0, true}},
 		{"1 bytes data", []byte{0x7F}, want{0b1111111, 1, false}},
 		{"2 bytes data", []byte{0xC0, 0xBF}, want{0b111111, 2, false}},
+		{"3 bytes data", []byte{0xE0, 0xBF, 0xBF}, want{0b111111111111, 3, false}},
+		{"4 bytes data", []byte{0xF0, 0xBF, 0xBF, 0xBF}, want{0b111111111111111111, 4, false}},
+		{"5 bytes data", []byte{0xF8, 0xBF, 0xBF, 0xBF, 0xBF}, want{0b111111111111111111111111, 5, false}},
+		{"6 bytes data", []byte{0xFC, 0xBF, 0xBF, 0xBF, 0xBF, 0xBF}, want{0b111111111111111111111111111111, 6, false}},
+		{"7 bytes data", []byte{0xFE, 0xBF, 0xBF, 0xBF, 0xBF, 0xBF, 0xBF}, want{0b111111111111111111111111111111111111, 7, false}},
 	}
 
 	for _, tt := range tests {
