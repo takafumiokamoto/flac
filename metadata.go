@@ -113,6 +113,7 @@ func readStreamInfo(r io.Reader) (streamInfo, error) {
 	// bitsPerSample occupies bits 103-107, spanning bytes 12-13, stored as (bits per sample)-1.
 	// The top bit is the last bit of buf[12] (mask 0x01), lifted 4 places to make room for
 	// the low 4 bits, which are the high nibble of buf[13] (the shift discards the rest).
+	// FIXME I need to validate whether valid bit sample because it is going to be referenced in frame header.
 	bitsPerSample := ((buf[12]&1)<<4 | buf[13]>>4) + 1
 	// totalSamples occupies bits 108-143, spanning bytes 13-17.
 	// buf[13] starts at bit 104.

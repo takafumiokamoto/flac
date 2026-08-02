@@ -44,19 +44,6 @@ type frameHeader struct {
 	crc              uint8
 }
 
-type bitDepthAssignment uint8
-
-const (
-	bitDepthStreamInfo bitDepthAssignment = 0b000 // bit depth only stored in the streaminfo metadata block
-	bitDepth8          bitDepthAssignment = 0b001 // 8 bits per sample
-	bitDepth12         bitDepthAssignment = 0b010 // 12 bits per sample
-	bitDepthReserved   bitDepthAssignment = 0b011 // reserved
-	bitDepth16         bitDepthAssignment = 0b100 // 16 bits per sample
-	bitDepth20         bitDepthAssignment = 0b101 // 20 bits per sample
-	bitDepth24         bitDepthAssignment = 0b110 // 24 bits per sample
-	bitDepth32         bitDepthAssignment = 0b111 // 32 bits per sample
-)
-
 type channelAssignment uint8
 
 const (
@@ -101,7 +88,25 @@ func readFrameHeader(b []byte, si streamInfo) (frameHeader, int, error) {
 	}
 
 	// Bit Depth Bits: https://www.rfc-editor.org/rfc/rfc9639.html#section-9.1.4
-	h.bitDepth = (b[3] >> 1) & 0x07
+	bitDepthBits := (b[3] >> 1) & 0x07
+	switch bitDepthBits {
+	case 0b000: // Bit depth only stored in the streaminfo metadata block
+		h.bitDepth = si.bitsPerSample
+	case 0b001: // 8 bits per sample
+		h.bitDepth = 8
+	case 0b010: // 12 bits per sample
+		h.bitDepth = 12
+	case 0b011: // Reserved
+		return frameHeader{}, 0, fmt.Errorf("%w: bit depth bits %03b are reserved", errBitDepth, bitDepthBits)
+	case 0b100: // 16 bits per sample
+		h.bitDepth = 16
+	case 0b101: // 20 bits per sample
+		h.bitDepth = 20
+	case 0b110: // 24 bits per sample
+		h.bitDepth = 24
+	case 0b111: // 32 bits per sample
+		h.bitDepth = 32
+	}
 
 	// The next bit is reserved and MUST be zero.
 	if b[3]&0x1 != 0 {
