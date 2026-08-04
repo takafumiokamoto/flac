@@ -146,7 +146,6 @@ func readFrameHeader(b []byte, si streamInfo) (frameHeader, int, error) {
 		nextIndex += 2
 	case 0b1000 <= v && v <= 0b1111: // 2^v
 		h.blockSize = uint16(1 << v)
-	default:
 	}
 
 	// Uncommon Sample Rate: https://www.rfc-editor.org/rfc/rfc9639.html#section-9.1.7
