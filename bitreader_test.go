@@ -25,7 +25,7 @@ func TestBitReaderRead(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			br := newBitReader(bytes.NewReader(tt.bitBuf))
-			got, err := br.read(tt.in)
+			got, err := br.readBits(tt.in)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("bitReader#read(%d), want err:%v, got err:%v", tt.in, tt.wantErr, err)
 			}
@@ -46,7 +46,7 @@ func TestBitReaderReadMaxBits(t *testing.T) {
 	t.Run("57 bits are readable", func(t *testing.T) {
 		br := newBitReader(bytes.NewReader(bitBuf))
 
-		got, err := br.read(57)
+		got, err := br.readBits(57)
 		if err != nil {
 			t.Fatalf("read(57), err:%v", err)
 		}
@@ -54,7 +54,7 @@ func TestBitReaderReadMaxBits(t *testing.T) {
 			t.Fatalf("read(57), want:%d, got:%d", want, got)
 		}
 
-		got, err = br.read(7)
+		got, err = br.readBits(7)
 		if err != nil {
 			t.Fatalf("read(7), err:%v", err)
 		}
@@ -66,7 +66,7 @@ func TestBitReaderReadMaxBits(t *testing.T) {
 	t.Run("58 bits are rejected", func(t *testing.T) {
 		br := newBitReader(bytes.NewReader(bitBuf))
 
-		_, err := br.read(58)
+		_, err := br.readBits(58)
 		if !errors.Is(err, errBitReader) {
 			t.Fatalf("read(58), want err:%v, got err:%v", errBitReader, err)
 		}
@@ -94,10 +94,10 @@ func TestBitReaderEOF(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			br := newBitReader(bytes.NewReader(tt.bitBuf))
-			if _, err := br.read(tt.consume); err != nil {
+			if _, err := br.readBits(tt.consume); err != nil {
 				t.Fatalf("read(%d), err:%v", tt.consume, err)
 			}
-			_, err := br.read(tt.in)
+			_, err := br.readBits(tt.in)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("read(%d), want err:%v, got err:%v", tt.in, tt.wantErr, err)
 			}
@@ -122,7 +122,7 @@ func TestBitReaderConsecutiveRead(t *testing.T) {
 	r := newBitReader(bitBuf)
 	for i, tt := range tests {
 		t.Run(fmt.Sprintf("step:%d", i+1), func(t *testing.T) {
-			got, err := r.read(tt.in)
+			got, err := r.readBits(tt.in)
 			if err != nil {
 				t.Errorf("read(), err:%v", err)
 			}
@@ -130,5 +130,29 @@ func TestBitReaderConsecutiveRead(t *testing.T) {
 				t.Errorf("read(), want:%d, got:%d", tt.want, got)
 			}
 		})
+	}
+}
+
+func TestReadSigned(t *testing.T) {
+	br := newBitReader(bytes.NewReader([]byte{0b11100000}))
+	var want int64 = -1
+	got, err := br.readSigned(3)
+	if err != nil {
+		t.Fatalf("readSigned() err%v", err)
+	}
+	if want != got {
+		t.Fatalf("readSigned() want%d, got%d", want, got)
+	}
+}
+
+func TestUnary(t *testing.T) {
+	br := newBitReader(bytes.NewReader([]byte{0b00000001}))
+	var want uint64 = 7
+	got, err := br.readUnary()
+	if err != nil {
+		t.Fatalf("readUnary() err:%v", err)
+	}
+	if want != got {
+		t.Fatalf("readUnary(), want:%d, got:%d", want, got)
 	}
 }

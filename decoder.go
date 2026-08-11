@@ -3,7 +3,7 @@ package flac
 import (
 	"bufio"
 	"errors"
-	"io"
+	"time"
 )
 
 var (
@@ -14,26 +14,16 @@ var (
 	ErrDuplicatedVorbisComment   = errors.New("flac: block type Vorbis Comment appears more than once.")
 )
 
-type Decoder struct {
-	src  *bufio.Reader
-	meta metadata
+type MetaData struct {
+	Name   string
+	Length time.Duration
 }
 
-func NewDecoder(r io.Reader) (*Decoder, error) {
-	// https://datatracker.ietf.org/doc/html/rfc9639#section-6
-	if err := validateMarker(r); err != nil {
-		return nil, err
-	}
-	meta, err := readMetadata(r)
-	if err != nil {
-		return nil, err
-	}
-	return &Decoder{
-		src:  bufio.NewReader(r),
-		meta: meta,
-	}, nil
+type PCM struct {
+	MetaData
+	Data []byte
 }
 
-func (d *Decoder) Decode() ([]byte, error) {
-	return nil, errors.New("not implemented")
+func Decode(r bufio.Reader) (PCM, error) {
+	return PCM{}, errors.New("not implemented")
 }

@@ -18,8 +18,6 @@ const (
 	blockingStrategyVariable blockingStrategy = 1
 )
 
-const ()
-
 var (
 	errFrameSync          = errors.New("flac: invalid frame sync")
 	errBitDepth           = errors.New("flac: invalid bit depth")

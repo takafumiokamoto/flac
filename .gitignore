@@ -27,6 +27,11 @@ go.work.sum
 # env file
 .env
 
+# MAC
+.DS_Store
+
 # Editor/IDE
 # .idea/
 # .vscode/
+
+music/

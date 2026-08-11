@@ -43,8 +43,8 @@ func (br *bitReader) fill(n uint) error {
 	return nil
 }
 
-// read reads n bits from the underlying reader and returns them as the low n bits of the result.
-func (br *bitReader) read(n uint) (uint64, error) {
+// readBits reads n bits from the underlying reader and returns them as the low n bits of the result.
+func (br *bitReader) readBits(n uint) (uint64, error) {
 	if n == 0 {
 		return 0, nil
 	}
@@ -56,4 +56,30 @@ func (br *bitReader) read(n uint) (uint64, error) {
 	br.acc <<= n
 	br.cnt -= n
 	return v, nil
+}
+
+// readSigned reads signed n bits
+func (br *bitReader) readSigned(n uint) (int64, error) {
+	bits, err := br.readBits(n)
+	if err != nil {
+		return 0, err
+	}
+	// 符号付きint64にキャストしてから左に64-nシフトして先頭をbit63に持っていく
+	// その右に64-n"算術"シフトして戻す。
+	// 算術シフトした場合はbit63が右にコピーされるので、先頭が1(マイナス)の場合でも符号を維持できる。
+	return int64(bits<<(64-n)) >> (64 - n), nil
+}
+
+func (br *bitReader) readUnary() (uint64, error) {
+	var unary int = 0
+	for {
+		b, err := br.readBits(1)
+		if err != nil {
+			return 0, err
+		}
+		if b == 1 {
+			return uint64(unary), nil
+		}
+		unary++
+	}
 }
