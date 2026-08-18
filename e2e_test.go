@@ -10,6 +10,10 @@ import (
 
 func TestDecoderSubset(t *testing.T) {
 	files, err := filepath.Glob("testdata/flac-test-files/subset/*.flac")
+	const fileCount = 64
+	if len(files) != fileCount {
+		t.Errorf("missing subset files want:%d, got:%d", fileCount, len(files))
+	}
 	if err != nil {
 		t.Fatalf("failed to glob flac files:%v", err)
 	}
@@ -31,6 +35,10 @@ func TestDecoderSubset(t *testing.T) {
 func TestDecoderFaulty(t *testing.T) {
 	// 確認観点はpanicまたはfreezeしないこと
 	files, err := filepath.Glob("testdata/flac-test-files/faulty/*.flac")
+	const fileCount = 11
+	if len(files) != fileCount {
+		t.Errorf("missing subset files want:%d, got:%d", fileCount, len(files))
+	}
 	if err != nil {
 		t.Fatalf("failed to glob flac files:%v", err)
 	}
