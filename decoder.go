@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"time"
 )
 
 var (
@@ -18,8 +17,9 @@ var (
 )
 
 type MetaData struct {
-	Name   string
-	Length time.Duration
+	SampleRate    uint32
+	Channels      uint8
+	BitsPerSample uint8
 }
 
 type PCM struct {
@@ -27,39 +27,47 @@ type PCM struct {
 	Data []byte
 }
 
-func Decode(r io.Reader) ([]byte, error) {
+func Decode(r io.Reader) (PCM, error) {
 	b, err := io.ReadAll(r)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrRead, err)
+		return PCM{}, fmt.Errorf("%w: %w", ErrRead, err)
 	}
 	br := bytes.NewReader(b)
 	if err := validateMarker(br); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrMarker, err)
+		return PCM{}, fmt.Errorf("%w: %w", ErrMarker, err)
 	}
 	meta, err := readMetadata(br)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrMetaData, err)
+		return PCM{}, fmt.Errorf("%w: %w", ErrMetaData, err)
 	}
 	si := meta.streamInfo
 	offset := len(b) - br.Len()
-	var pcm []byte
+	var sample []byte
 	for offset < len(b) {
 		header, frame, next, err := decodeFrame(b, offset, si)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrFrame, err)
+			return PCM{}, fmt.Errorf("%w: %w", ErrFrame, err)
 		}
 		offset = next
 		// PCMに変換
-		pcm = append(pcm, toPCMSample(header, frame)...)
+		sample = append(sample, toPCMSample(header, frame)...)
+	}
+	pcm := PCM{
+		Data: sample,
+		MetaData: MetaData{
+			SampleRate:    si.sampleRate,
+			Channels:      si.channels,
+			BitsPerSample: si.bitsPerSample,
+		},
 	}
 	if si.md5Sum == [16]byte{} {
 		// MD5がstreaminfoに格納されていない場合はMD5の比較を行わない
 		return pcm, nil
 	}
 	// デコード結果をMD5で検証
-	sum := md5.Sum(pcm)
+	sum := md5.Sum(sample)
 	if sum != si.md5Sum {
-		return nil, fmt.Errorf("%w: stored:%x, got:%x", ErrMD5, si.md5Sum, sum)
+		return PCM{}, fmt.Errorf("%w: stored:%x, got:%x", ErrMD5, si.md5Sum, sum)
 	}
 	return pcm, nil
 }
