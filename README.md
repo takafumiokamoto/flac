@@ -2,6 +2,11 @@
 
 A pure Go FLAC ([RFC 9639](https://rfc-editor.org/rfc/rfc9639)) decoder with zero dependencies.
 
+## Status
+
+**working draft, not yet refactored...**  
+**動作するドラフト, これからリファクタ...**
+
 ## Test results
 
 Tested against the IETF FLAC decoder testbench
