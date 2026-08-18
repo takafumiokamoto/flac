@@ -10,8 +10,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/google/go-cmp/cmp"
 )
 
 func TestValidateMarker(t *testing.T) {
@@ -82,8 +80,8 @@ func TestReadMetadataBlockHeader(t *testing.T) {
 				t.Logf("expected error: %v", err)
 				return
 			}
-			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(metadataBlockHeader{})); diff != "" {
-				t.Errorf("readMetadataBlockHeader() mismatch (-want +got):\n%s", diff)
+			if tt.want != got {
+				t.Errorf("readMetadataBlockHeader() mismatch want:%#v got:%#v", tt.want, got)
 			}
 		})
 	}
@@ -188,8 +186,8 @@ func TestReadStreamInfo(t *testing.T) {
 				t.Logf("expected error: %v", err)
 				return
 			}
-			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(streamInfo{})); diff != "" {
-				t.Errorf("readStreamInfo() mismatch (-want +got):\n%s", diff)
+			if tt.want != got {
+				t.Errorf("readStreamInfo() mismatch want:%v got:%v", tt.want, got)
 			}
 		})
 	}
@@ -270,8 +268,8 @@ func TestReadStreamInfoRealFile(t *testing.T) {
 			if err != nil {
 				t.Fatalf("readStreamInfo() error = %v", err)
 			}
-			if diff := cmp.Diff(want, got, cmp.AllowUnexported(streamInfo{})); diff != "" {
-				t.Errorf("readStreamInfo() mismatch (-want +got):\n%s", diff)
+			if want != got {
+				t.Errorf("readStreamInfo() mismatch want:%#v got:%#v", tt.want, got)
 			}
 		})
 	}
@@ -398,8 +396,8 @@ func TestReadMetadata(t *testing.T) {
 			if tt.wantErr != nil {
 				return
 			}
-			if diff := cmp.Diff(tt.want, got, cmp.AllowUnexported(metadata{}, streamInfo{})); diff != "" {
-				t.Errorf("readMetadata() mismatch (-want +gor):\n%s", diff)
+			if tt.want != got {
+				t.Errorf("readMetadata() mismatch want:%#v go:%#v", tt.want, got)
 			}
 		})
 	}
