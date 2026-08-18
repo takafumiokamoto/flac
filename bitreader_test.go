@@ -81,10 +81,10 @@ func TestBitReaderEOF(t *testing.T) {
 	tests := []struct {
 		name    string
 		bitBuf  []byte
-		consume uint  // bits consumed before the read that runs out of input
-		in      uint  // bits requested by the read that runs out of input
-		wantErr error // the error read has to report
-		notErr  error // the error read must not be confused with
+		consume uint  // 入力が尽きる読み取りの前に消費しておくビット数
+		in      uint  // 入力が尽きる読み取りで要求するビット数
+		wantErr error // 読み取りが返すべきエラー
+		notErr  error // 混同してはいけないエラー(errors.Isで偽になること)
 	}{
 		{"empty input", []byte{}, 0, 8, io.EOF, io.ErrUnexpectedEOF},
 		{"input ends on a byte boundary", []byte{0x1C}, 8, 1, io.EOF, io.ErrUnexpectedEOF},

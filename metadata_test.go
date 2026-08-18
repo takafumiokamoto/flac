@@ -97,17 +97,17 @@ func TestReadStreamInfo(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			// example_1.flac leaves the byte-crossing bits at 0 (bps top bit,
-			// totalSamples high nibble), so this vector sets them.
+			// example_1.flacではバイト境界をまたぐビット(bpsの最上位ビット、totalSamplesの上位ニブル)が0なので、
+			// このベクタではそれらを立てておく。
 			name: "byte-crossing bits set",
 			input: []byte{
-				0x00, 0x10, // min block size: 16
-				0xFF, 0xFF, // max block size: 65535
-				0x00, 0x00, 0x00, // min frame size: unknown
-				0xFF, 0xFF, 0xFF, // max frame size: 16777215
-				0x12, 0x34, 0x4B, // sample rate: 0x12344 = 74564, channels: 0b101 + 1 = 6, bps top bit: 1
-				0x3A,                   // bps: 0b10011 + 1 = 20, totalSamples high nibble: 0xA
-				0x00, 0x00, 0x00, 0x01, // totalSamples low 32 bits
+				0x00, 0x10, // 最小ブロックサイズ: 16
+				0xFF, 0xFF, // 最大ブロックサイズ: 65535
+				0x00, 0x00, 0x00, // 最小フレームサイズ: 不明
+				0xFF, 0xFF, 0xFF, // 最大フレームサイズ: 16777215
+				0x12, 0x34, 0x4B, // サンプルレート: 0x12344 = 74564, チャンネル数: 0b101 + 1 = 6, bpsの最上位ビット: 1
+				0x3A,                   // bps: 0b10011 + 1 = 20, totalSamplesの上位ニブル: 0xA
+				0x00, 0x00, 0x00, 0x01, // totalSamplesの下位32ビット
 				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // MD5
 				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 			},
@@ -134,13 +134,13 @@ func TestReadStreamInfo(t *testing.T) {
 		{
 			name: "minimum block size is invalid",
 			input: []byte{
-				0x00, 0x0f, // min block size: 15
-				0xFF, 0xFF, // max block size: 65535
-				0x00, 0x00, 0x00, // min frame size: unknown
-				0xFF, 0xFF, 0xFF, // max frame size: 16777215
-				0x12, 0x34, 0x4B, // sample rate: 0x12344 = 74564, channels: 0b101 + 1 = 6, bps top bit: 1
-				0x3A,                   // bps: 0b10011 + 1 = 20, totalSamples high nibble: 0xA
-				0x00, 0x00, 0x00, 0x01, // totalSamples low 32 bits
+				0x00, 0x0f, // 最小ブロックサイズ: 15
+				0xFF, 0xFF, // 最大ブロックサイズ: 65535
+				0x00, 0x00, 0x00, // 最小フレームサイズ: 不明
+				0xFF, 0xFF, 0xFF, // 最大フレームサイズ: 16777215
+				0x12, 0x34, 0x4B, // サンプルレート: 0x12344 = 74564, チャンネル数: 0b101 + 1 = 6, bpsの最上位ビット: 1
+				0x3A,                   // bps: 0b10011 + 1 = 20, totalSamplesの上位ニブル: 0xA
+				0x00, 0x00, 0x00, 0x01, // totalSamplesの下位32ビット
 				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // MD5
 				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 			},
@@ -149,13 +149,13 @@ func TestReadStreamInfo(t *testing.T) {
 		{
 			name: "maximum block size is invalid",
 			input: []byte{
-				0x00, 0x10, // min block size: 16
-				0x00, 0x0f, // max block size: 15
-				0x00, 0x00, 0x00, // min frame size: unknown
-				0xFF, 0xFF, 0xFF, // max frame size: 16777215
-				0x12, 0x34, 0x4B, // sample rate: 0x12344 = 74564, channels: 0b101 + 1 = 6, bps top bit: 1
-				0x3A,                   // bps: 0b10011 + 1 = 20, totalSamples high nibble: 0xA
-				0x00, 0x00, 0x00, 0x01, // totalSamples low 32 bits
+				0x00, 0x10, // 最小ブロックサイズ: 16
+				0x00, 0x0f, // 最大ブロックサイズ: 15
+				0x00, 0x00, 0x00, // 最小フレームサイズ: 不明
+				0xFF, 0xFF, 0xFF, // 最大フレームサイズ: 16777215
+				0x12, 0x34, 0x4B, // サンプルレート: 0x12344 = 74564, チャンネル数: 0b101 + 1 = 6, bpsの最上位ビット: 1
+				0x3A,                   // bps: 0b10011 + 1 = 20, totalSamplesの上位ニブル: 0xA
+				0x00, 0x00, 0x00, 0x01, // totalSamplesの下位32ビット
 				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // MD5
 				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 			},
@@ -164,13 +164,13 @@ func TestReadStreamInfo(t *testing.T) {
 		{
 			name: "minimum block size is greater than maximum block size",
 			input: []byte{
-				0x00, 0x11, // min block size: 17
-				0x00, 0x10, // max block size: 16
-				0x00, 0x00, 0x00, // min frame size: unknown
-				0xFF, 0xFF, 0xFF, // max frame size: 16777215
-				0x12, 0x34, 0x4B, // sample rate: 0x12344 = 74564, channels: 0b101 + 1 = 6, bps top bit: 1
-				0x3A,                   // bps: 0b10011 + 1 = 20, totalSamples high nibble: 0xA
-				0x00, 0x00, 0x00, 0x01, // totalSamples low 32 bits
+				0x00, 0x11, // 最小ブロックサイズ: 17
+				0x00, 0x10, // 最大ブロックサイズ: 16
+				0x00, 0x00, 0x00, // 最小フレームサイズ: 不明
+				0xFF, 0xFF, 0xFF, // 最大フレームサイズ: 16777215
+				0x12, 0x34, 0x4B, // サンプルレート: 0x12344 = 74564, チャンネル数: 0b101 + 1 = 6, bpsの最上位ビット: 1
+				0x3A,                   // bps: 0b10011 + 1 = 20, totalSamplesの上位ニブル: 0xA
+				0x00, 0x00, 0x00, 0x01, // totalSamplesの下位32ビット
 				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // MD5
 				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 			},
@@ -195,7 +195,7 @@ func TestReadStreamInfo(t *testing.T) {
 	}
 }
 
-// Expected values are documented in RFC 9639 Appendix D.
+// 期待値はRFC 9639 Appendix Dに記載されているもの。
 func TestReadStreamInfoRealFile(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -236,7 +236,7 @@ func TestReadStreamInfoRealFile(t *testing.T) {
 			},
 		},
 		{
-			// Appendix D.3.3; the MD5 is only in the hex dump of D.3.1
+			// Appendix D.3.3。MD5はD.3.1のhex dumpにしか出てこない
 			name:    "example_3",
 			file:    "example_3.flac",
 			wantMD5: "f8f9e396f5cbcfc6dc807f9977906b32",
@@ -279,7 +279,7 @@ func TestReadStreamInfoRealFile(t *testing.T) {
 
 var (
 	validStreamInfoHeader = []byte{
-		0x00, 0x00, 0x00, 0x22, // streaminfo header
+		0x00, 0x00, 0x00, 0x22, // STREAMINFOのヘッダ
 	}
 	seekTableMetadata = []byte{
 		0x03, 0x00, 0x00, 0x01, 0x00,
@@ -288,13 +288,13 @@ var (
 		0x04, 0x00, 0x00, 0x01, 0x00,
 	}
 	validStreamInfoBytes = []byte{
-		0x00, 0x10, // min block size: 16
-		0xFF, 0xFF, // max block size: 65535
-		0x00, 0x00, 0x00, // min frame size: unknown
-		0xFF, 0xFF, 0xFF, // max frame size: 16777215
-		0x12, 0x34, 0x4B, // sample rate: 0x12344 = 74564, channels: 0b101 + 1 = 6, bps top bit: 1
-		0x3A,                   // bps: 0b10011 + 1 = 20, totalSamples high nibble: 0xA
-		0x00, 0x00, 0x00, 0x01, // totalSamples low 32 bits
+		0x00, 0x10, // 最小ブロックサイズ: 16
+		0xFF, 0xFF, // 最大ブロックサイズ: 65535
+		0x00, 0x00, 0x00, // 最小フレームサイズ: 不明
+		0xFF, 0xFF, 0xFF, // 最大フレームサイズ: 16777215
+		0x12, 0x34, 0x4B, // サンプルレート: 0x12344 = 74564, チャンネル数: 0b101 + 1 = 6, bpsの最上位ビット: 1
+		0x3A,                   // bps: 0b10011 + 1 = 20, totalSamplesの上位ニブル: 0xA
+		0x00, 0x00, 0x00, 0x01, // totalSamplesの下位32ビット
 		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // MD5
 		0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 	}
@@ -323,15 +323,15 @@ func TestReadMetadata(t *testing.T) {
 	}{
 		{"empty", nil, metadata{}, io.EOF},
 		{"first metadata is not a streamInfo",
-			[]byte{0x81, //padding
+			[]byte{0x81, // padding
 				0x00, 0x00, 0x22},
-			metadata{}, ErrFirstBlockIsNotStreamInfo},
+			metadata{}, errFirstBlockIsNotStreamInfo},
 		{"length of streaminfo is not 34bytes",
-			[]byte{0x80, //streamInfo
+			[]byte{0x80, // streamInfo
 				0x00, 0x00,
-				0x23, // 35bytes
+				0x23, // 35バイト
 			},
-			metadata{}, ErrInvalidStremInfoLength},
+			metadata{}, errInvalidStremInfoLength},
 		{"first metadata header is streamInfo and last metadata",
 			slices.Concat([]byte{0x80, 0x00, 0x00, 0x22}, validStreamInfoBytes, []byte{}),
 			metadata{
@@ -341,17 +341,17 @@ func TestReadMetadata(t *testing.T) {
 			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, validStreamInfoHeader),
 			metadata{
 				streamInfo: wantStreamInfo,
-			}, ErrDuplicatedStreamInfo},
+			}, errDuplicatedStreamInfo},
 		{"duplicate seek table",
 			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, seekTableMetadata, seekTableMetadata),
 			metadata{
 				streamInfo: wantStreamInfo,
-			}, ErrDuplicatedSeekTable},
+			}, errDuplicatedSeekTable},
 		{"duplicate vorbis comment",
 			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, vorbisCommentMetadata, vorbisCommentMetadata),
 			metadata{
 				streamInfo: wantStreamInfo,
-			}, ErrDuplicatedVorbisComment},
+			}, errDuplicatedVorbisComment},
 		{"skip other metadata",
 			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, []byte{0x81, 0x00, 0x00, 0x01, 0x01}),
 			metadata{

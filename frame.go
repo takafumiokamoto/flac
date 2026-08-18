@@ -1,6 +1,7 @@
 package flac
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -56,15 +57,27 @@ const (
 	channelsLeftSide  channelAssignment = 0b1000 // subframe0=left, subframe1=side
 	channelsSideRight channelAssignment = 0b1001 // subframe0=side, subframe1=right
 	channelsMidSide   channelAssignment = 0b1010 // subframe0=mid,  subframe1=side
-	// 0b1011 - 0b1111 are reserved
+	// 0b1011〜0b1111は予約済み(reserved)
 )
+
+// count returns the number of channels (and thus subframes) coded in a frame with this channel assignment.
+func (c channelAssignment) count() uint {
+	// Channels Bits: https://www.rfc-editor.org/rfc/rfc9639.html#section-9.1.3
+	// Table 16 では 0b0000〜0b0111 が「値+1」チャンネルの独立符号化、
+	// 0b1000〜0b1010(left-side / side-right / mid-side)は常に 2 チャンネル。
+	// 0b1011 以上は reserved で readFrameHeader が弾いているので、ここには来ない。
+	if c >= channelsLeftSide {
+		return 2
+	}
+	return uint(c + 1)
+}
 
 func readFrameHeader(b []byte, si streamInfo) (frameHeader, int, error) {
 	if len(b) < 4 {
 		return frameHeader{}, 0, fmt.Errorf("flac: frame header is shorter than 4 bytes (got %d): %w", len(b), io.ErrUnexpectedEOF)
 	}
 	// Frame Header: https://www.rfc-editor.org/rfc/rfc9639.html#section-9.1
-	// The first 15 bits cover the 14-bit sync code plus the reserved bit, which MUST be zero.
+	// 先頭15ビットは14ビットのsync codeと、0でなければならない(MUST)予約ビット1つ。
 	frameSync := uint16(b[0])<<8 | uint16(b[1])
 	if frameSync>>1 != frameSyncCode {
 		return frameHeader{}, 0, fmt.Errorf("%w: the first 15 bits do not match the sync code and the reserved bit: %015b", errFrameSync, frameSync>>1)
@@ -88,25 +101,25 @@ func readFrameHeader(b []byte, si streamInfo) (frameHeader, int, error) {
 	// Bit Depth Bits: https://www.rfc-editor.org/rfc/rfc9639.html#section-9.1.4
 	bitDepthBits := (b[3] >> 1) & 0x07
 	switch bitDepthBits {
-	case 0b000: // Bit depth only stored in the streaminfo metadata block
+	case 0b000: // bit depthはSTREAMINFOにのみ格納されている
 		h.bitDepth = si.bitsPerSample
-	case 0b001: // 8 bits per sample
+	case 0b001: // 8ビット
 		h.bitDepth = 8
-	case 0b010: // 12 bits per sample
+	case 0b010: // 12ビット
 		h.bitDepth = 12
-	case 0b011: // Reserved
+	case 0b011: // 予約済み(reserved)
 		return frameHeader{}, 0, fmt.Errorf("%w: bit depth bits %03b are reserved", errBitDepth, bitDepthBits)
-	case 0b100: // 16 bits per sample
+	case 0b100: // 16ビット
 		h.bitDepth = 16
-	case 0b101: // 20 bits per sample
+	case 0b101: // 20ビット
 		h.bitDepth = 20
-	case 0b110: // 24 bits per sample
+	case 0b110: // 24ビット
 		h.bitDepth = 24
-	case 0b111: // 32 bits per sample
+	case 0b111: // 32ビット
 		h.bitDepth = 32
 	}
 
-	// The next bit is reserved and MUST be zero.
+	// 次の1ビットは予約ビットで、0でなければならない(MUST)。
 	if b[3]&0x1 != 0 {
 		return frameHeader{}, 0, fmt.Errorf("%w: the reserved bit after the bit depth bits is not zero", errBitDepth)
 	}
@@ -120,19 +133,19 @@ func readFrameHeader(b []byte, si streamInfo) (frameHeader, int, error) {
 
 	// Uncommon Block Size: https://www.rfc-editor.org/rfc/rfc9639.html#section-9.1.6
 	switch v := h.blockSizeBits; {
-	case v == 0b0000: // Reserved
+	case v == 0b0000: // 予約済み(reserved)
 		return frameHeader{}, 0, fmt.Errorf("%w: block size bits %04b are reserved", errBlockSize, v)
 	case v == 0b0001: // 192
 		h.blockSize = 192
 	case 0b0010 <= v && v <= 0b0101: // 144 * (2^v)
 		h.blockSize = uint16(144 * (1 << v))
-	case v == 0b0110: // Uncommon block size minus 1, stored as an 8-bit number
+	case v == 0b0110: // 一般的でないブロックサイズ−1を8ビットで格納
 		if len(b) < nextIndex+1 {
 			return frameHeader{}, 0, fmt.Errorf("%w: the 8-bit value is truncated: %w", errUncommonBlockSize, io.ErrUnexpectedEOF)
 		}
 		h.blockSize = uint16(b[nextIndex]) + 1
 		nextIndex += 1
-	case v == 0b0111: // Uncommon block size minus 1, stored as a 16-bit number
+	case v == 0b0111: // 一般的でないブロックサイズ−1を16ビットで格納
 		if len(b) < nextIndex+2 {
 			return frameHeader{}, 0, fmt.Errorf("%w: the 16-bit value is truncated: %w", errUncommonBlockSize, io.ErrUnexpectedEOF)
 		}
@@ -149,7 +162,7 @@ func readFrameHeader(b []byte, si streamInfo) (frameHeader, int, error) {
 	// Uncommon Sample Rate: https://www.rfc-editor.org/rfc/rfc9639.html#section-9.1.7
 	const hzPerKHz uint32 = 1000
 	switch h.sampleRateBits {
-	case 0b0000: // Sample rate only stored in the streaminfo metadata block
+	case 0b0000: // サンプルレートはSTREAMINFOにのみ格納されている
 		h.sampleRateHz = si.sampleRate
 	case 0b0001: // 88.2 kHz
 		h.sampleRateHz = 88200
@@ -173,25 +186,25 @@ func readFrameHeader(b []byte, si streamInfo) (frameHeader, int, error) {
 		h.sampleRateHz = 48000
 	case 0b1011: // 96 kHz
 		h.sampleRateHz = 96000
-	case 0b1100: // Uncommon sample rate in kHz, stored as an 8-bit number
+	case 0b1100: // 一般的でないサンプルレートをkHz単位・8ビットで格納
 		if len(b) < nextIndex+1 {
 			return frameHeader{}, 0, fmt.Errorf("%w: the 8-bit value is truncated: %w", errUncommonSampleRate, io.ErrUnexpectedEOF)
 		}
 		h.sampleRateHz = uint32(b[nextIndex]) * hzPerKHz
 		nextIndex += 1
-	case 0b1101: // Uncommon sample rate in Hz, stored as a 16-bit number
+	case 0b1101: // 一般的でないサンプルレートをHz単位・16ビットで格納
 		if len(b) < nextIndex+2 {
 			return frameHeader{}, 0, fmt.Errorf("%w: the 16-bit value is truncated: %w", errUncommonSampleRate, io.ErrUnexpectedEOF)
 		}
 		h.sampleRateHz = uint32(b[nextIndex])<<8 | uint32(b[nextIndex+1])
 		nextIndex += 2
-	case 0b1110: // Uncommon sample rate in Hz divided by 10, stored as a 16-bit number
+	case 0b1110: // 一般的でないサンプルレートをHz/10単位・16ビットで格納
 		if len(b) < nextIndex+2 {
 			return frameHeader{}, 0, fmt.Errorf("%w: the 16-bit value is truncated: %w", errUncommonSampleRate, io.ErrUnexpectedEOF)
 		}
 		h.sampleRateHz = (uint32(b[nextIndex])<<8 | uint32(b[nextIndex+1])) * 10
 		nextIndex += 2
-	case 0b1111: // Forbidden
+	case 0b1111: // 禁止(forbidden)
 		return frameHeader{}, 0, fmt.Errorf("%w: sample rate bits %04b are forbidden", errSampleRate, h.sampleRateBits)
 	}
 
@@ -204,6 +217,10 @@ func readFrameHeader(b []byte, si streamInfo) (frameHeader, int, error) {
 		return frameHeader{}, 0, fmt.Errorf("%w: the CRC byte is missing: %w", errCRC, io.ErrUnexpectedEOF)
 	}
 	h.crc = b[nextIndex]
+	crcSum := crc8(b[:nextIndex])
+	if h.crc != crcSum {
+		return frameHeader{}, 0, fmt.Errorf("%w: the CRC does not match: stored:%02x, got:%02x", errCRC, h.crc, crcSum)
+	}
 	nextIndex += 1
 	return h, nextIndex, nil
 }
@@ -216,8 +233,8 @@ func decodeCodedNumber(b []byte) (uint64, int, error) {
 	if b[0] == 0xFF || (b[0]>>6) == 0b10 {
 		return 0, 0, fmt.Errorf("%w: invalid first byte %#x", errCodedNumber, b[0])
 	}
-	// ^b[0] flips every bit, so the leading zeros of the complement count the leading ones of b[0],
-	// which is the total length of the coded number in bytes.
+	// ^b[0]で全ビットを反転すると、反転後の先頭0の数 = b[0]の先頭1の数になる。
+	// これがcoded number全体のバイト長。
 	byteLength := bits.LeadingZeros8(^b[0])
 	if byteLength == 0 {
 		return uint64(b[0]), 1, nil
@@ -233,4 +250,137 @@ func decodeCodedNumber(b []byte) (uint64, int, error) {
 		val = val<<6 | uint64(b[i]&0x7F)
 	}
 	return val, byteLength, nil
+}
+
+func decodeFrame(b []byte, startIndex int, si streamInfo) (frameHeader, []int64, int, error) {
+	h, nextIndex, err := readFrameHeader(b[startIndex:], si)
+	if err != nil {
+		return frameHeader{}, nil, 0, fmt.Errorf("flac: failed to read frame header:%w", err)
+	}
+	br := newBitReader(bytes.NewReader(b[startIndex+nextIndex:]))
+	var samples []int64
+	switch h.channel {
+	case channelsMono, channelsStereo, channels3, channels4, channels5, channels6, channels7, channels8:
+		s, err := decodeIndependent(br, h.channel, h.bitDepth, h.blockSize)
+		if err != nil {
+			return frameHeader{}, nil, 0, err
+		}
+		samples = append(samples, s...)
+	case channelsLeftSide:
+		s, err := decodeLeftSide(br, h.bitDepth, h.blockSize)
+		if err != nil {
+			return frameHeader{}, nil, 0, err
+		}
+		samples = append(samples, s...)
+	case channelsSideRight:
+		s, err := decodeSideRight(br, h.bitDepth, h.blockSize)
+		if err != nil {
+			return frameHeader{}, nil, 0, err
+		}
+		samples = append(samples, s...)
+	case channelsMidSide:
+		s, err := decodeMidSide(br, h.bitDepth, h.blockSize)
+		if err != nil {
+			return frameHeader{}, nil, 0, err
+		}
+		samples = s
+	default:
+		return frameHeader{}, nil, 0, fmt.Errorf("flac: invalid channel :%d", h.channel)
+	}
+	if _, err = br.readBits(br.cnt); err != nil { // 余りを読み込んで次のバイト境界CRC16の始まりに揃える
+		return frameHeader{}, nil, 0, fmt.Errorf("flac: failed to read padding bits:%w", err)
+	}
+	crcStart := startIndex + nextIndex + int(br.bytesRead)
+	if len(b) < crcStart+2 {
+		return frameHeader{}, nil, 0, fmt.Errorf("%w: the CRC byte is missing:%w", errCRC, io.ErrUnexpectedEOF)
+	}
+	storedCRC := uint16(b[crcStart])<<8 | uint16(b[crcStart+1])
+	crcSum := crc16(b[startIndex:crcStart])
+	if storedCRC != crcSum {
+		return frameHeader{}, nil, 0, fmt.Errorf("%w: CRC-16 does not match: stored:%02x, got:%02x", errCRC, storedCRC, crcSum)
+	}
+	endIndex := crcStart + 2 // CRC-16の分の2を足す
+	return h, samples, endIndex, nil
+}
+
+func decodeIndependent(
+	br *bitReader, channel channelAssignment, bitDepth uint8, blockSize uint16,
+) (
+	[]int64, error,
+) {
+	var samples []int64
+	for i := range channel.count() {
+		s, err := decodeSubframe(br, bitDepth, blockSize)
+		if err != nil {
+			return nil, fmt.Errorf("flac: failed to decode subframe %d, err:%w", i, err)
+		}
+		samples = append(samples, s...)
+	}
+	return samples, nil
+}
+func decodeMidSide(br *bitReader, bitDepth uint8, blockSize uint16) ([]int64, error) {
+	// FIXME: (perf) 事前バッファ
+	var samples []int64
+	mid, err := decodeSubframe(br, bitDepth, blockSize)
+	if err != nil {
+		return nil, fmt.Errorf("flac: failed to decode subframe mid, err:%w", err)
+	}
+	side, err := decodeSubframe(br, bitDepth+1, blockSize)
+	if err != nil {
+		return nil, fmt.Errorf("flac: failed to decode subframe side, err:%w", err)
+	}
+	// Interchannel Decorrelation: https://www.rfc-editor.org/rfc/rfc9639.html#section-4.2
+	left := make([]int64, blockSize)
+	right := make([]int64, blockSize)
+	for i := range blockSize {
+		m := mid[i] << 1
+		if side[i]&1 != 0 {
+			m += 1
+		}
+		left[i] = (m + side[i]) >> 1
+		right[i] = (m - side[i]) >> 1
+	}
+	samples = append(samples, left...)
+	samples = append(samples, right...)
+	return samples, nil
+}
+func decodeLeftSide(br *bitReader, bitDepth uint8, blockSize uint16) ([]int64, error) {
+	// FIXME: (perf) 事前バッファ
+	var samples []int64
+	left, err := decodeSubframe(br, bitDepth, blockSize)
+	if err != nil {
+		return nil, fmt.Errorf("flac: failed to decode subframe left, err:%w", err)
+	}
+	side, err := decodeSubframe(br, bitDepth+1, blockSize)
+	if err != nil {
+		return nil, fmt.Errorf("flac: failed to decode subframe side, err:%w", err)
+	}
+	// Interchannel Decorrelation: https://www.rfc-editor.org/rfc/rfc9639.html#section-4.2
+	// sideはleft - rightとして符号化されているので、right = left - sideで復元する。
+	right := make([]int64, blockSize)
+	for i := range right {
+		right[i] = left[i] - side[i]
+	}
+	samples = append(samples, left...)
+	samples = append(samples, right...)
+	return samples, nil
+}
+func decodeSideRight(br *bitReader, bitDepth uint8, blockSize uint16) ([]int64, error) {
+	// FIXME: (perf) 事前バッファ
+	var samples []int64
+	side, err := decodeSubframe(br, bitDepth+1, blockSize)
+	if err != nil {
+		return nil, fmt.Errorf("flac: failed to decode subframe side, err:%w", err)
+	}
+	right, err := decodeSubframe(br, bitDepth, blockSize)
+	if err != nil {
+		return nil, fmt.Errorf("flac: failed to decode subframe right, err:%w", err)
+	}
+	left := make([]int64, blockSize)
+	for i := range left {
+		left[i] = right[i] + side[i]
+	}
+	samples = append(samples, left...)
+	samples = append(samples, right...)
+	return samples, nil
 }

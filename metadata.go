@@ -7,9 +7,17 @@ import (
 )
 
 type metadata struct {
-	// Only streamInfo is needed for now.
+	// 今のところ必要なのはstreamInfoだけ。
 	streamInfo streamInfo
 }
+
+var (
+	errFirstBlockIsNotStreamInfo = errors.New("flac: first metadata is not streaminfo")
+	errInvalidStremInfoLength    = errors.New("flac: invalid streamInfoLength")
+	errDuplicatedStreamInfo      = errors.New("flac: block type Streaminfo appears more than once.")
+	errDuplicatedSeekTable       = errors.New("flac: block type SeekTable appears more than once.")
+	errDuplicatedVorbisComment   = errors.New("flac: block type Vorbis Comment appears more than once.")
+)
 
 func readMetadata(r io.Reader) (metadata, error) {
 	firstMetaHeader, err := readMetadataBlockHeader(r)
@@ -18,11 +26,11 @@ func readMetadata(r io.Reader) (metadata, error) {
 	}
 	if firstMetaHeader.blockType != metadataBlockTypeStreamInfo {
 		return metadata{}, fmt.Errorf("%w, got type %d",
-			ErrFirstBlockIsNotStreamInfo, firstMetaHeader.blockType)
+			errFirstBlockIsNotStreamInfo, firstMetaHeader.blockType)
 	}
 	if firstMetaHeader.length != streamInfoLength {
 		return metadata{}, fmt.Errorf("%w, length %d, want %d",
-			ErrInvalidStremInfoLength, firstMetaHeader.length, streamInfoLength)
+			errInvalidStremInfoLength, firstMetaHeader.length, streamInfoLength)
 	}
 	st, err := readStreamInfo(r)
 	if err != nil {
@@ -45,20 +53,20 @@ func readMetadata(r io.Reader) (metadata, error) {
 		}
 		switch metaHeader.blockType {
 		case metadataBlockTypeStreamInfo:
-			return metadata{}, ErrDuplicatedStreamInfo
+			return metadata{}, errDuplicatedStreamInfo
 		case metadataBlockTypeSeekTable:
 			if typeSeekTableExists {
-				return metadata{}, ErrDuplicatedSeekTable
+				return metadata{}, errDuplicatedSeekTable
 			}
 			typeSeekTableExists = true
 		case metadataBlockTypeVorbisComment:
 			if typeVorbisCommentExists {
-				return metadata{}, ErrDuplicatedVorbisComment
+				return metadata{}, errDuplicatedVorbisComment
 			}
 			typeVorbisCommentExists = true
 		default:
 		}
-		// skip all metadata except for streamInfo.
+		// streamInfo以外のメタデータは読み飛ばす。
 		if err := skipMetadata(r, metaHeader); err != nil {
 			return metadata{}, err
 		}
@@ -107,17 +115,17 @@ func readStreamInfo(r io.Reader) (streamInfo, error) {
 	minFrameSize := uint32(buf[4])<<16 | uint32(buf[5])<<8 | uint32(buf[6])
 	maxFrameSize := uint32(buf[7])<<16 | uint32(buf[8])<<8 | uint32(buf[9])
 	sampleRate := (uint32(buf[10])<<16 | uint32(buf[11])<<8 | uint32(buf[12])) >> 4
-	// channels occupies bits 100-102 (byte 12 plus 4 bits), stored as (number of channels)-1.
-	// buf[12] holds bits 96-103: shift out the trailing bps bit, then mask the low 3 bits.
+	// channelsはビット100-102(12バイト目+4ビット)を占め、(チャンネル数)-1で格納されている。
+	// buf[12]はビット96-103を保持しているので、末尾のbpsのビットを右シフトで追い出してから下位3ビットをマスクする。
 	channels := ((buf[12] >> 1) & 0x07) + 1
-	// bitsPerSample occupies bits 103-107, spanning bytes 12-13, stored as (bits per sample)-1.
-	// The top bit is the last bit of buf[12] (mask 0x01), lifted 4 places to make room for
-	// the low 4 bits, which are the high nibble of buf[13] (the shift discards the rest).
-	// FIXME I need to validate whether valid bit sample because it is going to be referenced in frame header.
+	// bitsPerSampleはビット103-107を占め、12-13バイト目にまたがる。(bits per sample)-1で格納されている。
+	// 最上位ビットはbuf[12]の最後のビット(mask 0x01)。これを4つ左に持ち上げて下位4ビットの席を空け、
+	// そこにbuf[13]の上位ニブルを入れる(右シフトで残りは捨てる)。
+	// FIXME: フレームヘッダから参照されるので、bits per sampleが有効な値か検証したい。
 	bitsPerSample := ((buf[12]&1)<<4 | buf[13]>>4) + 1
-	// totalSamples occupies bits 108-143, spanning bytes 13-17.
-	// buf[13] starts at bit 104.
-	// buf[17] covers bits 136 to 143.
+	// totalSamplesはビット108-143を占め、13-17バイト目にまたがる。
+	// buf[13]はビット104から始まる。
+	// buf[17]はビット136-143。
 	totalSamples := uint64(buf[13]&0x0f)<<32 | uint64(buf[14])<<24 | uint64(buf[15])<<16 | uint64(buf[16])<<8 | uint64(buf[17])
 	var md5Sum = [16]byte{}
 	copy(md5Sum[:], buf[18:34])
@@ -139,13 +147,11 @@ func readStreamInfo(r io.Reader) (streamInfo, error) {
 }
 
 func validateStreamInfo(s streamInfo) error {
-	// The minimum block size should be within 16...65535, but the maximum value
-	// of uint16 is exactly 65535, so only the lower bound is checked.
+	// 最小ブロックサイズは16...65535の範囲であるべきだが、uint16の最大値がちょうど65535なので下限だけ検証する。
 	if s.minBlockSize < 16 {
 		return fmt.Errorf("flac: minimum block size in streaminfo isn't in 16-65535 range: %d", s.minBlockSize)
 	}
-	// The maximum block size should be within 16...65535, but the maximum value
-	// of uint16 is exactly 65535, so only the lower bound is checked.
+	// 最大ブロックサイズも同様に、下限だけ検証する。
 	if s.maxBlockSize < 16 {
 		return fmt.Errorf("flac: maximum block size in streaminfo isn't in 16-65355 range: %d", s.maxBlockSize)
 	}
@@ -199,7 +205,7 @@ func readMetadataBlockHeader(r io.Reader) (metadataBlockHeader, error) {
 	h := metadataBlockHeader{
 		isLast:    buf[0]&0x80 != 0,
 		blockType: blockType,
-		// The last three bytes of the metadata header encode the payload length as a 24-bit big-endian integer.
+		// メタデータヘッダの末尾3バイトが、ペイロード長を24ビットのビッグエンディアン整数で表す。
 		length: uint32(buf[1])<<16 | uint32(buf[2])<<8 | uint32(buf[3]),
 	}
 	if h.blockType == metadataBlockTypeForbidden {

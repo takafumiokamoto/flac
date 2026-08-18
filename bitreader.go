@@ -12,9 +12,10 @@ var (
 
 // bitReader reads a bit stream most significant bit first.
 type bitReader struct {
-	r   io.ByteReader
-	acc uint64 // accumulator
-	cnt uint   // the top cnt bits of the accumulator are valid
+	r         io.ByteReader
+	acc       uint64 // アキュムレータ。取り込んだビットを左詰め(bit63側)で保持する
+	cnt       uint   // 上位cntビットが有効(未消費)。fillは必要になるまで次のバイトを取り込まないので、readBitsの後は常に0〜7
+	bytesRead uint   // 下のreaderから取り込んだバイト数。cnt > 0のとき最後の1バイトは読みかけ(消費し終えていない)
 }
 
 func newBitReader(r io.ByteReader) *bitReader {
@@ -36,8 +37,9 @@ func (br *bitReader) fill(n uint) error {
 			}
 			return err
 		}
-		// The valid bits end at bit 64-cnt, so the incoming byte occupies bits 63-cnt down to 56-cnt.
+		// 有効ビットはbit63からbit(64-cnt)までを占めているので、次のバイトはその直後のbit(63-cnt)〜bit(56-cnt)に置く。
 		br.acc |= uint64(b) << (56 - br.cnt)
+		br.bytesRead++
 		br.cnt += 8
 	}
 	return nil
@@ -51,7 +53,7 @@ func (br *bitReader) readBits(n uint) (uint64, error) {
 	if err := br.fill(n); err != nil {
 		return 0, err
 	}
-	// The valid bits are left aligned, so the requested bits are the top n bits.
+	// 有効ビットは左詰めなので、要求されたnビットは上位nビット。
 	v := br.acc >> (64 - n)
 	br.acc <<= n
 	br.cnt -= n
