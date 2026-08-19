@@ -29,6 +29,7 @@ func decodeSubframe(br *bitReader, bps uint8, blockSize uint16) ([]int64, error)
 		return nil, fmt.Errorf("flac: wasted bits must be smaller bit per sample, wasted bits:%d, bit per sample:%d", h.wastedBits, bps)
 	}
 	bps -= uint8(h.wastedBits)
+	// FIXME: (perf)事前バッファ
 	var samples []int64
 	switch h.typ {
 	case subframeConstant:

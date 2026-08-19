@@ -7,7 +7,7 @@ A pure Go FLAC ([RFC 9639](https://rfc-editor.org/rfc/rfc9639)) decoder with zer
 **working draft, not yet refactored...**  
 **動作するドラフト, これからリファクタ...**
 
-## Test results
+## Conformance test results
 
 Tested against the IETF FLAC decoder testbench
 [ietf-wg-cellar/flac-test-files](https://github.com/ietf-wg-cellar/flac-test-files) (commit `aa7b0c6`).
@@ -41,7 +41,7 @@ cd flac
 go test ./...
 ```
 
-## テスト結果
+## 適合テスト結果
 
 ### 結果
 
@@ -67,7 +67,7 @@ go test ./...
 ## TODO
 
 - エラー処理の一貫性
-- パフォーマンス最適化
+- パフォーマンス最適化(ストリーム対応)
 - テスト拡充
 - uncommonのテスト
 - ログ機能

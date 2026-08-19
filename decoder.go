@@ -28,6 +28,7 @@ type PCM struct {
 }
 
 func Decode(r io.Reader) (PCM, error) {
+	// FIXME: ストリーム化
 	b, err := io.ReadAll(r)
 	if err != nil {
 		return PCM{}, fmt.Errorf("%w: %w", ErrRead, err)
@@ -42,8 +43,11 @@ func Decode(r io.Reader) (PCM, error) {
 	}
 	si := meta.streamInfo
 	offset := len(b) - br.Len()
+	// FIXME: サイズ予測ができるように
 	var sample []byte
 	for offset < len(b) {
+		// TODO: Frameのデコードは並行して行えるが、デコードをしないと次のFrameのバイト境界が分からない。
+		// もしgoroutineで並行デコードするなら事前にバイト境界のみ先読みする必要がある。
 		header, frame, next, err := decodeFrame(b, offset, si)
 		if err != nil {
 			return PCM{}, fmt.Errorf("%w: %w", ErrFrame, err)
@@ -73,7 +77,6 @@ func Decode(r io.Reader) (PCM, error) {
 }
 
 func toPCMSample(header frameHeader, frame []int64) []byte {
-	// PCMに変換
 	var buf []byte
 	n := (header.bitDepth + 7) / 8 // ビット深度をバイト位置に切り上げ
 	for i := range header.blockSize {

@@ -15,7 +15,7 @@ import (
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "err:%v\n", err)
-		return
+		os.Exit(1)
 	}
 }
 

@@ -20,6 +20,7 @@ const (
 )
 
 var (
+	// FIXME: organize
 	errFrameSync          = errors.New("flac: invalid frame sync")
 	errBitDepth           = errors.New("flac: invalid bit depth")
 	errCodedNumber        = errors.New("flac: invalid coded number")
@@ -258,6 +259,7 @@ func decodeFrame(b []byte, startIndex int, si streamInfo) (frameHeader, []int64,
 		return frameHeader{}, nil, 0, fmt.Errorf("flac: failed to read frame header:%w", err)
 	}
 	br := newBitReader(bytes.NewReader(b[startIndex+nextIndex:]))
+	// FIXME: (perf) 事前バッファ
 	var samples []int64
 	switch h.channel {
 	case channelsMono, channelsStereo, channels3, channels4, channels5, channels6, channels7, channels8:
@@ -265,19 +267,19 @@ func decodeFrame(b []byte, startIndex int, si streamInfo) (frameHeader, []int64,
 		if err != nil {
 			return frameHeader{}, nil, 0, err
 		}
-		samples = append(samples, s...)
+		samples = s
 	case channelsLeftSide:
 		s, err := decodeLeftSide(br, h.bitDepth, h.blockSize)
 		if err != nil {
 			return frameHeader{}, nil, 0, err
 		}
-		samples = append(samples, s...)
+		samples = s
 	case channelsSideRight:
 		s, err := decodeSideRight(br, h.bitDepth, h.blockSize)
 		if err != nil {
 			return frameHeader{}, nil, 0, err
 		}
-		samples = append(samples, s...)
+		samples = s
 	case channelsMidSide:
 		s, err := decodeMidSide(br, h.bitDepth, h.blockSize)
 		if err != nil {
@@ -308,6 +310,7 @@ func decodeIndependent(
 ) (
 	[]int64, error,
 ) {
+	// FIXME: (perf) 事前バッファ
 	var samples []int64
 	for i := range channel.count() {
 		s, err := decodeSubframe(br, bitDepth, blockSize)
