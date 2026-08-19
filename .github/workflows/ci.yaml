@@ -17,6 +17,10 @@ jobs:
         with:
           go-version-file: go.mod
       - name: format
-        run: gofmt -l -d .
+        run: |
+          if [ -n "$(gofmt -l .)" ]; then
+            echo "gofmt error"
+            exit 1
+          fi
       - name: test
         run: go test -count=1 ./...
