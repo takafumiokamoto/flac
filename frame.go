@@ -73,7 +73,7 @@ func (c channelAssignment) count() uint {
 	return uint(c + 1)
 }
 
-func readFrameHeader(b []byte, si streamInfo) (frameHeader, int, error) {
+func readFrameHeader(b []byte, si StreamInfo) (frameHeader, int, error) {
 	if len(b) < 4 {
 		return frameHeader{}, 0, fmt.Errorf("flac: frame header is shorter than 4 bytes (got %d): %w", len(b), io.ErrUnexpectedEOF)
 	}
@@ -103,7 +103,7 @@ func readFrameHeader(b []byte, si streamInfo) (frameHeader, int, error) {
 	bitDepthBits := (b[3] >> 1) & 0x07
 	switch bitDepthBits {
 	case 0b000: // bit depthはSTREAMINFOにのみ格納されている
-		h.bitDepth = si.bitsPerSample
+		h.bitDepth = si.BitsPerSample
 	case 0b001: // 8ビット
 		h.bitDepth = 8
 	case 0b010: // 12ビット
@@ -164,7 +164,7 @@ func readFrameHeader(b []byte, si streamInfo) (frameHeader, int, error) {
 	const hzPerKHz uint32 = 1000
 	switch h.sampleRateBits {
 	case 0b0000: // サンプルレートはSTREAMINFOにのみ格納されている
-		h.sampleRateHz = si.sampleRate
+		h.sampleRateHz = si.SampleRate
 	case 0b0001: // 88.2 kHz
 		h.sampleRateHz = 88200
 	case 0b0010: // 176.4 kHz
@@ -253,7 +253,7 @@ func decodeCodedNumber(b []byte) (uint64, int, error) {
 	return val, byteLength, nil
 }
 
-func decodeFrame(b []byte, startIndex int, si streamInfo) (frameHeader, []int64, int, error) {
+func decodeFrame(b []byte, startIndex int, si StreamInfo) (frameHeader, []int64, int, error) {
 	h, nextIndex, err := readFrameHeader(b[startIndex:], si)
 	if err != nil {
 		return frameHeader{}, nil, 0, fmt.Errorf("flac: failed to read frame header:%w", err)

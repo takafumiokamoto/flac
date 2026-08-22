@@ -1,3 +1,4 @@
+// Package flac provides a decoder fro FLAC (Free Lossless Audio Codec) as specified in RFC 9639.
 package flac
 
 import (
@@ -9,21 +10,99 @@ import (
 )
 
 var (
-	ErrRead     = errors.New("flac: failed to read input")
-	ErrMarker   = errors.New("flac: invalid stream marker")
+	// ErrRead is returned when reading the input fails.
+	ErrRead = errors.New("flac: failed to read input")
+
+	// ErrMarker is returned when the stream does not begin with the
+	// "fLaC" marker (Section 6).
+	ErrMarker = errors.New("flac: invalid stream marker")
+
+	// ErrMetaData is returned when a metadata block is invalid
+	// (Section 8).
 	ErrMetaData = errors.New("flac: invalid metadata")
-	ErrFrame    = errors.New("flac: invalid frame")
-	ErrMD5      = errors.New("flac: MD5 sum does not match")
+
+	// ErrFrame is returned when an audio frame is invalid (Section 9).
+	ErrFrame = errors.New("flac: invalid frame")
+
+	// ErrMD5 is returned when the decoded samples do not match the MD5
+	// checksum stored in the streaminfo metadata block (Section 8.2).
+	ErrMD5 = errors.New("flac: MD5 sum does not match")
 )
 
-type MetaData struct {
+// Metadata holds the metadata of a FLAC stream.
+type Metadata struct {
+	// Currently, StreamInfo only.
+	StreamInfo
+}
+
+// StreamInfo: https://www.rfc-editor.org/rfc/rfc9639.html#name-streaminfo
+type StreamInfo struct {
+	MinBlockSize  uint16
+	MaxBlockSize  uint16
+	MinFrameSize  uint32
+	MaxFrameSize  uint32
 	SampleRate    uint32
 	Channels      uint8
 	BitsPerSample uint8
+	TotalSamples  uint64
+	Md5Sum        [16]byte
+}
+
+// Decoder decodes a FLAC steram.
+type Decoder struct {
+	r    io.Reader
+	meta Metadata
+}
+
+// NewDecoder returns a Decoder.
+//
+// NewDecoder reads the "fLaC" marker and all metadata blocks before returning.
+// These metadata blocks are available via [Decoder.Metadata] and [Decoder.StreamInfo]
+func NewDecoder(r io.Reader) (*Decoder, error) {
+	if err := validateMarker(r); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrMarker, err)
+	}
+	meta, err := readMetadata(r)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrMetaData, err)
+	}
+	return &Decoder{
+		r:    r,
+		meta: meta,
+	}, nil
+}
+
+// Metadata returns the matadata of a FLAC Stream.
+//
+// https://www.rfc-editor.org/rfc/rfc9639.html#name-file-level-metadata
+func (d *Decoder) Metadata() Metadata {
+	return d.meta
+}
+
+// StreamInfo returns streaminfo of a FLAC stream.
+//
+// https://www.rfc-editor.org/rfc/rfc9639.html#name-streaminfo
+func (d *Decoder) StreamInfo() StreamInfo {
+	return d.meta.StreamInfo
+}
+
+// Decode decodes the FLAC stream to interleaved PCM samples and writes it to w.
+//
+// If the streaminfo metadata block stores an MD5 checksum, Decode
+// verifies the decoded samples against it and returns [ErrMD5] if it
+// does not match; an all-zero checksum means none is stored, and
+// verification is skipped.
+//
+// Decode returns [ErrFrame] if an audio frame is invalid. This includes
+// a mismatch of the frame header CRC (Section 9.1.8) or the
+// frame footer CRC (Section 9.3).
+func (d *Decoder) Decode(w io.Writer) error {
+	// FIMXE: mock
+	return nil
 }
 
 type PCM struct {
-	MetaData
+	StreamInfo
 	Data []byte
 }
 
@@ -41,7 +120,7 @@ func Decode(r io.Reader) (PCM, error) {
 	if err != nil {
 		return PCM{}, fmt.Errorf("%w: %w", ErrMetaData, err)
 	}
-	si := meta.streamInfo
+	si := meta.StreamInfo
 	offset := len(b) - br.Len()
 	// FIXME: サイズ予測ができるように
 	var sample []byte
@@ -57,21 +136,17 @@ func Decode(r io.Reader) (PCM, error) {
 		sample = append(sample, toPCMSample(header, frame)...)
 	}
 	pcm := PCM{
-		Data: sample,
-		MetaData: MetaData{
-			SampleRate:    si.sampleRate,
-			Channels:      si.channels,
-			BitsPerSample: si.bitsPerSample,
-		},
+		Data:       sample,
+		StreamInfo: si,
 	}
-	if si.md5Sum == [16]byte{} {
+	if si.Md5Sum == [16]byte{} {
 		// MD5がstreaminfoに格納されていない場合はMD5の比較を行わない
 		return pcm, nil
 	}
 	// デコード結果をMD5で検証
 	sum := md5.Sum(sample)
-	if sum != si.md5Sum {
-		return PCM{}, fmt.Errorf("%w: stored:%x, got:%x", ErrMD5, si.md5Sum, sum)
+	if sum != si.Md5Sum {
+		return PCM{}, fmt.Errorf("%w: stored:%x, got:%x", ErrMD5, si.Md5Sum, sum)
 	}
 	return pcm, nil
 }

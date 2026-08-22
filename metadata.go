@@ -6,11 +6,6 @@ import (
 	"io"
 )
 
-type metadata struct {
-	// 今のところ必要なのはstreamInfoだけ。
-	streamInfo streamInfo
-}
-
 var (
 	errFirstBlockIsNotStreamInfo = errors.New("flac: first metadata is not streaminfo")
 	errInvalidStremInfoLength    = errors.New("flac: invalid streamInfoLength")
@@ -19,25 +14,25 @@ var (
 	errDuplicatedVorbisComment   = errors.New("flac: block type Vorbis Comment appears more than once.")
 )
 
-func readMetadata(r io.Reader) (metadata, error) {
+func readMetadata(r io.Reader) (Metadata, error) {
 	firstMetaHeader, err := readMetadataBlockHeader(r)
 	if err != nil {
-		return metadata{}, err
+		return Metadata{}, err
 	}
 	if firstMetaHeader.blockType != metadataBlockTypeStreamInfo {
-		return metadata{}, fmt.Errorf("%w, got type %d",
+		return Metadata{}, fmt.Errorf("%w, got type %d",
 			errFirstBlockIsNotStreamInfo, firstMetaHeader.blockType)
 	}
 	if firstMetaHeader.length != streamInfoLength {
-		return metadata{}, fmt.Errorf("%w, length %d, want %d",
+		return Metadata{}, fmt.Errorf("%w, length %d, want %d",
 			errInvalidStremInfoLength, firstMetaHeader.length, streamInfoLength)
 	}
 	st, err := readStreamInfo(r)
 	if err != nil {
-		return metadata{}, err
+		return Metadata{}, err
 	}
-	meta := metadata{
-		streamInfo: st,
+	meta := Metadata{
+		StreamInfo: st,
 	}
 	if firstMetaHeader.isLast {
 		return meta, nil
@@ -49,26 +44,26 @@ func readMetadata(r io.Reader) (metadata, error) {
 	for {
 		metaHeader, err := readMetadataBlockHeader(r)
 		if err != nil {
-			return metadata{}, err
+			return Metadata{}, err
 		}
 		switch metaHeader.blockType {
 		case metadataBlockTypeStreamInfo:
-			return metadata{}, errDuplicatedStreamInfo
+			return Metadata{}, errDuplicatedStreamInfo
 		case metadataBlockTypeSeekTable:
 			if typeSeekTableExists {
-				return metadata{}, errDuplicatedSeekTable
+				return Metadata{}, errDuplicatedSeekTable
 			}
 			typeSeekTableExists = true
 		case metadataBlockTypeVorbisComment:
 			if typeVorbisCommentExists {
-				return metadata{}, errDuplicatedVorbisComment
+				return Metadata{}, errDuplicatedVorbisComment
 			}
 			typeVorbisCommentExists = true
 		default:
 		}
 		// streamInfo以外のメタデータは読み飛ばす。
 		if err := skipMetadata(r, metaHeader); err != nil {
-			return metadata{}, err
+			return Metadata{}, err
 		}
 		if metaHeader.isLast {
 			break
@@ -105,10 +100,10 @@ const streamInfoLength = 34
 // the sample rate, the number of channels, and the total number of interchannel samples.
 // For more information, see:
 // https://datatracker.ietf.org/doc/html/rfc9639#name-streaminfo
-func readStreamInfo(r io.Reader) (streamInfo, error) {
+func readStreamInfo(r io.Reader) (StreamInfo, error) {
 	var buf = [streamInfoLength]byte{}
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
-		return streamInfo{}, fmt.Errorf("flac: failed to read Streaminfo: %w", err)
+		return StreamInfo{}, fmt.Errorf("flac: failed to read Streaminfo: %w", err)
 	}
 	minBlockSize := uint16(buf[0])<<8 | uint16(buf[1])
 	maxBlockSize := uint16(buf[2])<<8 | uint16(buf[3])
@@ -129,48 +124,36 @@ func readStreamInfo(r io.Reader) (streamInfo, error) {
 	totalSamples := uint64(buf[13]&0x0f)<<32 | uint64(buf[14])<<24 | uint64(buf[15])<<16 | uint64(buf[16])<<8 | uint64(buf[17])
 	var md5Sum = [16]byte{}
 	copy(md5Sum[:], buf[18:34])
-	st := streamInfo{
-		minBlockSize:  minBlockSize,
-		maxBlockSize:  maxBlockSize,
-		minFrameSize:  minFrameSize,
-		maxFrameSize:  maxFrameSize,
-		sampleRate:    sampleRate,
-		channels:      channels,
-		bitsPerSample: bitsPerSample,
-		totalSamples:  totalSamples,
-		md5Sum:        md5Sum,
+	st := StreamInfo{
+		MinBlockSize:  minBlockSize,
+		MaxBlockSize:  maxBlockSize,
+		MinFrameSize:  minFrameSize,
+		MaxFrameSize:  maxFrameSize,
+		SampleRate:    sampleRate,
+		Channels:      channels,
+		BitsPerSample: bitsPerSample,
+		TotalSamples:  totalSamples,
+		Md5Sum:        md5Sum,
 	}
 	if err := validateStreamInfo(st); err != nil {
-		return streamInfo{}, err
+		return StreamInfo{}, err
 	}
 	return st, nil
 }
 
-func validateStreamInfo(s streamInfo) error {
+func validateStreamInfo(s StreamInfo) error {
 	// 最小ブロックサイズは16...65535の範囲であるべきだが、uint16の最大値がちょうど65535なので下限だけ検証する。
-	if s.minBlockSize < 16 {
-		return fmt.Errorf("flac: minimum block size in streaminfo isn't in 16-65535 range: %d", s.minBlockSize)
+	if s.MinBlockSize < 16 {
+		return fmt.Errorf("flac: minimum block size in streaminfo isn't in 16-65535 range: %d", s.MinBlockSize)
 	}
 	// 最大ブロックサイズも同様に、下限だけ検証する。
-	if s.maxBlockSize < 16 {
-		return fmt.Errorf("flac: maximum block size in streaminfo isn't in 16-65355 range: %d", s.maxBlockSize)
+	if s.MaxBlockSize < 16 {
+		return fmt.Errorf("flac: maximum block size in streaminfo isn't in 16-65355 range: %d", s.MaxBlockSize)
 	}
-	if s.maxBlockSize < s.minBlockSize {
-		return fmt.Errorf("flac: minimum block size is greater than maximum block size: min:%d, max:%d", s.minBlockSize, s.maxBlockSize)
+	if s.MaxBlockSize < s.MinBlockSize {
+		return fmt.Errorf("flac: minimum block size is greater than maximum block size: min:%d, max:%d", s.MinBlockSize, s.MaxBlockSize)
 	}
 	return nil
-}
-
-type streamInfo struct {
-	minBlockSize  uint16
-	maxBlockSize  uint16
-	minFrameSize  uint32
-	maxFrameSize  uint32
-	sampleRate    uint32
-	channels      uint8
-	bitsPerSample uint8
-	totalSamples  uint64
-	md5Sum        [16]byte
 }
 
 type metadataBlockType uint8

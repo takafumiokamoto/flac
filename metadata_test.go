@@ -91,7 +91,7 @@ func TestReadStreamInfo(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   []byte
-		want    streamInfo
+		want    StreamInfo
 		wantErr bool
 	}{
 		{
@@ -109,16 +109,16 @@ func TestReadStreamInfo(t *testing.T) {
 				0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // MD5
 				0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 			},
-			want: streamInfo{
-				minBlockSize:  16,
-				maxBlockSize:  65535,
-				minFrameSize:  0,
-				maxFrameSize:  16777215,
-				sampleRate:    74564,
-				channels:      6,
-				bitsPerSample: 20,
-				totalSamples:  0xA_0000_0001,
-				md5Sum: [16]byte{
+			want: StreamInfo{
+				MinBlockSize:  16,
+				MaxBlockSize:  65535,
+				MinFrameSize:  0,
+				MaxFrameSize:  16777215,
+				SampleRate:    74564,
+				Channels:      6,
+				BitsPerSample: 20,
+				TotalSamples:  0xA_0000_0001,
+				Md5Sum: [16]byte{
 					0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
 					0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 				},
@@ -199,22 +199,22 @@ func TestReadStreamInfoRealFile(t *testing.T) {
 		name    string
 		file    string
 		wantMD5 string
-		want    streamInfo
+		want    StreamInfo
 	}{
 		{
 			// Appendix D.1.3
 			name:    "example_1",
 			file:    "example_1.flac",
 			wantMD5: "3e84b41807dc690307586a3dad1a2e0f",
-			want: streamInfo{
-				minBlockSize:  4096,
-				maxBlockSize:  4096,
-				minFrameSize:  15,
-				maxFrameSize:  15,
-				sampleRate:    44100,
-				channels:      2,
-				bitsPerSample: 16,
-				totalSamples:  1,
+			want: StreamInfo{
+				MinBlockSize:  4096,
+				MaxBlockSize:  4096,
+				MinFrameSize:  15,
+				MaxFrameSize:  15,
+				SampleRate:    44100,
+				Channels:      2,
+				BitsPerSample: 16,
+				TotalSamples:  1,
 			},
 		},
 		{
@@ -222,15 +222,15 @@ func TestReadStreamInfoRealFile(t *testing.T) {
 			name:    "example_2",
 			file:    "example_2.flac",
 			wantMD5: "d5b0564975e98b8d8b930422757b8103",
-			want: streamInfo{
-				minBlockSize:  16,
-				maxBlockSize:  16,
-				minFrameSize:  23,
-				maxFrameSize:  68,
-				sampleRate:    44100,
-				channels:      2,
-				bitsPerSample: 16,
-				totalSamples:  19,
+			want: StreamInfo{
+				MinBlockSize:  16,
+				MaxBlockSize:  16,
+				MinFrameSize:  23,
+				MaxFrameSize:  68,
+				SampleRate:    44100,
+				Channels:      2,
+				BitsPerSample: 16,
+				TotalSamples:  19,
 			},
 		},
 		{
@@ -238,15 +238,15 @@ func TestReadStreamInfoRealFile(t *testing.T) {
 			name:    "example_3",
 			file:    "example_3.flac",
 			wantMD5: "f8f9e396f5cbcfc6dc807f9977906b32",
-			want: streamInfo{
-				minBlockSize:  4096,
-				maxBlockSize:  4096,
-				minFrameSize:  31,
-				maxFrameSize:  31,
-				sampleRate:    32000,
-				channels:      1,
-				bitsPerSample: 8,
-				totalSamples:  24,
+			want: StreamInfo{
+				MinBlockSize:  4096,
+				MaxBlockSize:  4096,
+				MinFrameSize:  31,
+				MaxFrameSize:  31,
+				SampleRate:    32000,
+				Channels:      1,
+				BitsPerSample: 8,
+				TotalSamples:  24,
 			},
 		},
 	}
@@ -263,7 +263,7 @@ func TestReadStreamInfoRealFile(t *testing.T) {
 				t.Fatalf("bad expected MD5 literal %q", tt.wantMD5)
 			}
 			want := tt.want
-			copy(want.md5Sum[:], b)
+			copy(want.Md5Sum[:], b)
 			got, err := readStreamInfo(bytes.NewReader(f[8:]))
 			if err != nil {
 				t.Fatalf("readStreamInfo() error = %v", err)
@@ -299,16 +299,16 @@ var (
 )
 
 func TestReadMetadata(t *testing.T) {
-	wantStreamInfo := streamInfo{
-		minBlockSize:  16,
-		maxBlockSize:  65535,
-		minFrameSize:  0,
-		maxFrameSize:  16777215,
-		sampleRate:    74564,
-		channels:      6,
-		bitsPerSample: 20,
-		totalSamples:  0xA_0000_0001,
-		md5Sum: [16]byte{
+	wantStreamInfo := StreamInfo{
+		MinBlockSize:  16,
+		MaxBlockSize:  65535,
+		MinFrameSize:  0,
+		MaxFrameSize:  16777215,
+		SampleRate:    74564,
+		Channels:      6,
+		BitsPerSample: 20,
+		TotalSamples:  0xA_0000_0001,
+		Md5Sum: [16]byte{
 			0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
 			0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 		},
@@ -316,72 +316,72 @@ func TestReadMetadata(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   []byte
-		want    metadata
+		want    Metadata
 		wantErr error
 	}{
-		{"empty", nil, metadata{}, io.EOF},
+		{"empty", nil, Metadata{}, io.EOF},
 		{"first metadata is not a streamInfo",
 			[]byte{0x81, // padding
 				0x00, 0x00, 0x22},
-			metadata{}, errFirstBlockIsNotStreamInfo},
+			Metadata{}, errFirstBlockIsNotStreamInfo},
 		{"length of streaminfo is not 34bytes",
 			[]byte{0x80, // streamInfo
 				0x00, 0x00,
 				0x23, // 35バイト
 			},
-			metadata{}, errInvalidStremInfoLength},
+			Metadata{}, errInvalidStremInfoLength},
 		{"first metadata header is streamInfo and last metadata",
 			slices.Concat([]byte{0x80, 0x00, 0x00, 0x22}, validStreamInfoBytes, []byte{}),
-			metadata{
-				streamInfo: wantStreamInfo,
+			Metadata{
+				StreamInfo: wantStreamInfo,
 			}, nil},
 		{"duplicate streamInfo",
 			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, validStreamInfoHeader),
-			metadata{
-				streamInfo: wantStreamInfo,
+			Metadata{
+				StreamInfo: wantStreamInfo,
 			}, errDuplicatedStreamInfo},
 		{"duplicate seek table",
 			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, seekTableMetadata, seekTableMetadata),
-			metadata{
-				streamInfo: wantStreamInfo,
+			Metadata{
+				StreamInfo: wantStreamInfo,
 			}, errDuplicatedSeekTable},
 		{"duplicate vorbis comment",
 			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, vorbisCommentMetadata, vorbisCommentMetadata),
-			metadata{
-				streamInfo: wantStreamInfo,
+			Metadata{
+				StreamInfo: wantStreamInfo,
 			}, errDuplicatedVorbisComment},
 		{"skip other metadata",
 			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, []byte{0x81, 0x00, 0x00, 0x01, 0x01}),
-			metadata{
-				streamInfo: wantStreamInfo,
+			Metadata{
+				StreamInfo: wantStreamInfo,
 			},
 			nil,
 		},
 		{"doesn't reject Padding",
 			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, []byte{0x81, 0x00, 0x00, 0x01, 0x01}),
-			metadata{
-				streamInfo: wantStreamInfo,
+			Metadata{
+				StreamInfo: wantStreamInfo,
 			},
 			nil,
 		},
 		{"doesn't reject Application",
 			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, []byte{0x82, 0x00, 0x00, 0x01, 0x01}),
-			metadata{
-				streamInfo: wantStreamInfo,
+			Metadata{
+				StreamInfo: wantStreamInfo,
 			},
 			nil,
 		},
 		{"doesn't reject CueSheet",
 			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, []byte{0x85, 0x00, 0x00, 0x01, 0x01}),
-			metadata{
-				streamInfo: wantStreamInfo,
+			Metadata{
+				StreamInfo: wantStreamInfo,
 			},
 			nil,
 		},
 		{"doesn't reject Picture",
 			slices.Concat(validStreamInfoHeader, validStreamInfoBytes, []byte{0x86, 0x00, 0x00, 0x01, 0x01}),
-			metadata{
-				streamInfo: wantStreamInfo,
+			Metadata{
+				StreamInfo: wantStreamInfo,
 			},
 			nil,
 		},
