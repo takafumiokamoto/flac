@@ -28,13 +28,13 @@ if err != nil {
 buf := make([]byte, 8192)
 for {
     n, err := dec.Read(buf)
-    // do something with buf[:n]
     if err == io.EOF {
         break
     }
     if err != nil {
         log.Fatal(err)
     }
+    // do something with buf[:n]
 }
 ```
 
