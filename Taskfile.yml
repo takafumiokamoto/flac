@@ -7,3 +7,7 @@ tasks:
     desc: run benchmark
     cmds:
       - go test -bench=. -benchmem -memprofile mem.prof -cpuprofile cpu.prof -run="^$" .
+  fuzz:
+    desc: run fuzzing
+    cmds:
+      - go test -fuzz="^FuzzDecode$" -run="^$" -fuzztime=60s .
