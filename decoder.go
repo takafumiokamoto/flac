@@ -6,6 +6,7 @@ import (
 	"crypto/md5"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 )
 
@@ -47,8 +48,15 @@ type StreamInfo struct {
 
 // Decoder decodes a FLAC steram.
 type Decoder struct {
-	r    *bufio.Reader
-	meta Metadata
+	r      *bufio.Reader
+	frames *frameDecoder
+	meta   Metadata
+	// 呼び出し元に返却していないPCM
+	pending []byte
+	// 処理を継続できないエラー
+	terminalErr error
+	// PCM全体のMD5ハッシュ
+	hash hash.Hash
 }
 
 // NewDecoder returns a Decoder.
@@ -65,8 +73,10 @@ func NewDecoder(r io.Reader) (*Decoder, error) {
 		return nil, fmt.Errorf("%w: %w", ErrMetadata, err)
 	}
 	return &Decoder{
-		r:    rd,
-		meta: meta,
+		r:      rd,
+		meta:   meta,
+		frames: newFrameDecoder(rd, meta.StreamInfo),
+		hash:   md5.New(),
 	}, nil
 }
 
@@ -84,7 +94,65 @@ func (d *Decoder) StreamInfo() StreamInfo {
 	return d.meta.StreamInfo
 }
 
+// Read decodes FLAC audio and reads up to len(p) bytes of interleaved PCM into p.
+//
+// The PCM samples are signed and little-endian, with channels interleaved
+// on a per-sample basis. If the bit depth is not a whole number of bytes,
+// each sample is sign-extended to the next whole number of bytes, as
+// specified in RFC 9639 Section 8.2.
+//
+// Read boundaries are independent of PCM sample and FLAC frame boundaries.
+// A sample or frame may therefore be split across multiple calls to Read.
+// The stream format is available through [Decoder.StreamInfo].
+//
+// If STREAMINFO contains a non-zero MD5 checksum, Read verifies it after
+// decoding the final frame. Callers must continue reading until Read returns
+// [io.EOF]. If the checksum does not match, Read returns [ErrMD5] instead of [io.EOF].
+// An all-zero checksum means that no checksum is available, and verification is skipped.
+//
+// Decoder is stateful and represents a single decoding pass. Read must not
+// be called concurrently.
+func (d *Decoder) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+
+	// 返却していないPCMがあれば返却
+	if len(d.pending) > 0 {
+		return d.copyPending(p), nil
+	}
+
+	// エラーがあれば返却
+	if d.terminalErr != nil {
+		return 0, d.terminalErr
+	}
+
+	header, samples, err := d.frames.decodeFrame()
+	// FIXME: 読み込んだフレームのヘッダの内容がSTREAMINFOと食い違う場合は
+	// ここで判定してエラーにする。
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			d.terminalErr = d.finish() //MD5の検証
+		} else {
+			d.terminalErr = fmt.Errorf("%w: %w", ErrFrame, err)
+		}
+		return 0, d.terminalErr
+	}
+	// PCMに変換
+	pcm := toPCMSample(header, samples)
+	// MD5のハッシュ計算(逐次)
+	// MD5のWriteはエラーを返さないので結果は両方捨てる
+	_, _ = d.hash.Write(pcm)
+	d.pending = pcm
+	return d.copyPending(p), nil
+}
+
 // Decode decodes the FLAC stream to interleaved PCM samples and writes it to w.
+//
+// The PCM samples are signed and little-endian, with channels interleaved
+// on a per-sample basis. If the bit depth is not a whole number of bytes,
+// each sample is sign-extended to the next whole number of bytes, as
+// specified in RFC 9639 Section 8.2.
 //
 // If the streaminfo metadata block stores an MD5 checksum, Decode
 // verifies the decoded samples against it and returns [ErrMD5] if it
@@ -95,32 +163,34 @@ func (d *Decoder) StreamInfo() StreamInfo {
 // a mismatch of the frame header CRC (Section 9.1.8) or the
 // frame footer CRC (Section 9.3).
 func (d *Decoder) Decode(w io.Writer) error {
-	fr := newFrameDecoder(d.r, d.meta.StreamInfo)
-	hash := md5.New()
-	mw := io.MultiWriter(w, hash)
-	for {
-		h, samples, err := fr.decodeFrame()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return err
-		}
-		// interlaved PCMに変換
-		if _, err := mw.Write(toPCMSample(h, samples)); err != nil {
-			return err
-		}
+	if _, err := io.Copy(w, d); err != nil {
+		return err
 	}
+	return nil
+}
+
+func (d *Decoder) copyPending(p []byte) int {
+	n := copy(p, d.pending)
+	d.pending = d.pending[n:]
+
+	if len(d.pending) == 0 {
+		d.pending = nil
+	}
+
+	return n
+}
+
+func (d *Decoder) finish() error {
 	wantMD5Sum := d.meta.StreamInfo.MD5Sum
 	if wantMD5Sum == [16]byte{} {
 		// stream infoにMD5が設定されていなければMD5のチェックをしない
-		return nil
+		return io.EOF
 	}
-	gotMD5Sum := [16]byte(hash.Sum(nil))
+	gotMD5Sum := [16]byte(d.hash.Sum(nil))
 	if wantMD5Sum != gotMD5Sum {
 		return fmt.Errorf("%w: want:%x, got:%x", ErrMD5, wantMD5Sum, gotMD5Sum)
 	}
-	return nil
+	return io.EOF
 }
 
 func toPCMSample(header frameHeader, frame []int64) []byte {
