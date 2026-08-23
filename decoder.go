@@ -132,7 +132,12 @@ func (d *Decoder) Read(p []byte) (int, error) {
 	// ここで判定してエラーにする。
 	if err != nil {
 		if errors.Is(err, io.EOF) {
-			d.terminalErr = d.finish() //MD5の検証
+			err = d.finish() //MD5の検証
+			if err != nil {
+				d.terminalErr = err
+			} else {
+				d.terminalErr = io.EOF
+			}
 		} else {
 			d.terminalErr = fmt.Errorf("%w: %w", ErrFrame, err)
 		}
@@ -184,13 +189,13 @@ func (d *Decoder) finish() error {
 	wantMD5Sum := d.meta.StreamInfo.MD5Sum
 	if wantMD5Sum == [16]byte{} {
 		// stream infoにMD5が設定されていなければMD5のチェックをしない
-		return io.EOF
+		return nil
 	}
 	gotMD5Sum := [16]byte(d.hash.Sum(nil))
 	if wantMD5Sum != gotMD5Sum {
 		return fmt.Errorf("%w: want:%x, got:%x", ErrMD5, wantMD5Sum, gotMD5Sum)
 	}
-	return io.EOF
+	return nil
 }
 
 func toPCMSample(header frameHeader, frame []int64) []byte {
