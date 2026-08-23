@@ -10,16 +10,13 @@ import (
 )
 
 var (
-	// ErrRead is returned when reading the input fails.
-	ErrRead = errors.New("flac: failed to read input")
-
 	// ErrMarker is returned when the stream does not begin with the
 	// "fLaC" marker (Section 6).
 	ErrMarker = errors.New("flac: invalid stream marker")
 
-	// ErrMetaData is returned when a metadata block is invalid
+	// ErrMetadata is returned when a metadata block is invalid
 	// (Section 8).
-	ErrMetaData = errors.New("flac: invalid metadata")
+	ErrMetadata = errors.New("flac: invalid metadata")
 
 	// ErrFrame is returned when an audio frame is invalid (Section 9).
 	ErrFrame = errors.New("flac: invalid frame")
@@ -65,7 +62,7 @@ func NewDecoder(r io.Reader) (*Decoder, error) {
 	}
 	meta, err := readMetadata(rd)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrMetaData, err)
+		return nil, fmt.Errorf("%w: %w", ErrMetadata, err)
 	}
 	return &Decoder{
 		r:    rd,
@@ -107,7 +104,7 @@ func (d *Decoder) Decode(w io.Writer) error {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return fmt.Errorf("%w: %w", ErrFrame, err)
+			return err
 		}
 		// interlaved PCMに変換
 		if _, err := mw.Write(toPCMSample(h, samples)); err != nil {

@@ -23,6 +23,7 @@ func TestDecoderSubset(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to read :%s, err:%v", fileName, err)
 			}
+			defer f.Close()
 			dec, err := flac.NewDecoder(f)
 			if err != nil {
 				t.Fatalf("failed to initialize decoder: err:%v", err)
@@ -51,6 +52,7 @@ func TestDecoderFaulty(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to read :%s, err:%v", fileName, err)
 			}
+			defer f.Close()
 			dec, err := flac.NewDecoder(f)
 			if err != nil {
 				t.Logf("decoder rejects %s in metadata, err:%v", fileName, err)

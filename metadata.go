@@ -1,18 +1,27 @@
 package flac
 
 import (
-	"errors"
 	"fmt"
 	"io"
 )
 
 var (
-	errFirstBlockIsNotStreamInfo = errors.New("flac: first metadata is not streaminfo")
-	errInvalidStremInfoLength    = errors.New("flac: invalid streamInfoLength")
-	errDuplicatedStreamInfo      = errors.New("flac: block type Streaminfo appears more than once.")
-	errDuplicatedSeekTable       = errors.New("flac: block type SeekTable appears more than once.")
-	errDuplicatedVorbisComment   = errors.New("flac: block type Vorbis Comment appears more than once.")
+	errFirstBlockIsNotStreamInfo = fmt.Errorf("%w: first metadata block is not streaminfo", ErrMetadata)
+	errInvalidStremInfoLength    = fmt.Errorf("%w: invalid streaminfo length", ErrMetadata)
+	errDuplicatedStreamInfo      = fmt.Errorf("%w: streaminfo appears more than once", ErrMetadata)
+	errDuplicatedSeekTable       = fmt.Errorf("%w: seek table appears more than once", ErrMetadata)
+	errDuplicatedVorbisComment   = fmt.Errorf("%w: vorbis comment appears more than once", ErrMetadata)
+	errForbiddenBlockType        = fmt.Errorf("%w: block type 127 is forbidden", ErrMetadata)
+	errBlockSizeOutOfRange       = fmt.Errorf("%w: block size in streaminfo is not in 16-65535 range", ErrMetadata)
+	errMinBlockSizeExceedsMax    = fmt.Errorf("%w: minimum block size is greater than maximum block size", ErrMetadata)
 )
+
+func readFull(r io.Reader, buf []byte) error {
+	if _, err := io.ReadFull(r, buf); err != nil {
+		return err
+	}
+	return nil
+}
 
 func readMetadata(r io.Reader) (Metadata, error) {
 	firstMetaHeader, err := readMetadataBlockHeader(r)
@@ -20,11 +29,11 @@ func readMetadata(r io.Reader) (Metadata, error) {
 		return Metadata{}, err
 	}
 	if firstMetaHeader.blockType != metadataBlockTypeStreamInfo {
-		return Metadata{}, fmt.Errorf("%w, got type %d",
+		return Metadata{}, fmt.Errorf("%w: got type %d",
 			errFirstBlockIsNotStreamInfo, firstMetaHeader.blockType)
 	}
 	if firstMetaHeader.length != streamInfoLength {
-		return Metadata{}, fmt.Errorf("%w, length %d, want %d",
+		return Metadata{}, fmt.Errorf("%w: got %d, want %d",
 			errInvalidStremInfoLength, firstMetaHeader.length, streamInfoLength)
 	}
 	st, err := readStreamInfo(r)
@@ -83,11 +92,11 @@ func skipMetadata(r io.Reader, metadataHeader metadataBlockHeader) error {
 func validateMarker(r io.Reader) error {
 	var wantMarker = [4]byte{'f', 'L', 'a', 'C'}
 	var buf = [4]byte{}
-	if _, err := io.ReadFull(r, buf[:]); err != nil {
-		return fmt.Errorf("flac: failed to validate marker (fLaC): %w", err)
+	if err := readFull(r, buf[:]); err != nil {
+		return fmt.Errorf("flac: failed to read marker (fLaC): %w", err)
 	}
 	if wantMarker != buf {
-		return fmt.Errorf("flac: failed to validate marker, got: % X", buf)
+		return fmt.Errorf("%w: failed to validate marker, got: % X", ErrMarker, buf)
 	}
 	return nil
 }
@@ -102,7 +111,7 @@ const streamInfoLength = 34
 // https://datatracker.ietf.org/doc/html/rfc9639#name-streaminfo
 func readStreamInfo(r io.Reader) (StreamInfo, error) {
 	var buf = [streamInfoLength]byte{}
-	if _, err := io.ReadFull(r, buf[:]); err != nil {
+	if err := readFull(r, buf[:]); err != nil {
 		return StreamInfo{}, fmt.Errorf("flac: failed to read Streaminfo: %w", err)
 	}
 	minBlockSize := uint16(buf[0])<<8 | uint16(buf[1])
@@ -144,14 +153,14 @@ func readStreamInfo(r io.Reader) (StreamInfo, error) {
 func validateStreamInfo(s StreamInfo) error {
 	// 最小ブロックサイズは16...65535の範囲であるべきだが、uint16の最大値がちょうど65535なので下限だけ検証する。
 	if s.MinBlockSize < 16 {
-		return fmt.Errorf("flac: minimum block size in streaminfo isn't in 16-65535 range: %d", s.MinBlockSize)
+		return fmt.Errorf("%w: min:%d", errBlockSizeOutOfRange, s.MinBlockSize)
 	}
 	// 最大ブロックサイズも同様に、下限だけ検証する。
 	if s.MaxBlockSize < 16 {
-		return fmt.Errorf("flac: maximum block size in streaminfo isn't in 16-65355 range: %d", s.MaxBlockSize)
+		return fmt.Errorf("%w: max:%d", errBlockSizeOutOfRange, s.MaxBlockSize)
 	}
 	if s.MaxBlockSize < s.MinBlockSize {
-		return fmt.Errorf("flac: minimum block size is greater than maximum block size: min:%d, max:%d", s.MinBlockSize, s.MaxBlockSize)
+		return fmt.Errorf("%w: min:%d, max:%d", errMinBlockSizeExceedsMax, s.MinBlockSize, s.MaxBlockSize)
 	}
 	return nil
 }
@@ -180,7 +189,7 @@ type metadataBlockHeader struct {
 // https://datatracker.ietf.org/doc/html/rfc9639#name-metadata-block-header
 func readMetadataBlockHeader(r io.Reader) (metadataBlockHeader, error) {
 	var buf = [4]byte{}
-	if _, err := io.ReadFull(r, buf[:]); err != nil {
+	if err := readFull(r, buf[:]); err != nil {
 		return metadataBlockHeader{},
 			fmt.Errorf("flac: failed to read header of metadata block: %w", err)
 	}
@@ -192,8 +201,7 @@ func readMetadataBlockHeader(r io.Reader) (metadataBlockHeader, error) {
 		length: uint32(buf[1])<<16 | uint32(buf[2])<<8 | uint32(buf[3]),
 	}
 	if h.blockType == metadataBlockTypeForbidden {
-		return metadataBlockHeader{},
-			errors.New("flac: block type 127 is invalid")
+		return metadataBlockHeader{}, errForbiddenBlockType
 	}
 	return h, nil
 }

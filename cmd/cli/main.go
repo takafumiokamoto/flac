@@ -33,14 +33,14 @@ func run() error {
 
 	dec, err := flac.NewDecoder(f)
 	if err != nil {
-		return fmt.Errorf("failed to initialize decoder: %v", err)
+		return fmt.Errorf("failed to initialize decoder: %w", err)
 	}
 
 	var buf bytes.Buffer
 
 	err = dec.Decode(&buf)
 	if err != nil {
-		return fmt.Errorf("deocde error err:%v", err)
+		return fmt.Errorf("deocde error err:%w", err)
 	}
 
 	pcm := PCM{
