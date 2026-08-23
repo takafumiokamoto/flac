@@ -28,7 +28,7 @@ func TestDecoderSubset(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to initialize decoder: err:%v", err)
 			}
-			err = dec.Decode(io.Discard)
+			_, err = io.Copy(io.Discard, dec)
 			if err != nil {
 				t.Errorf("test bench failed: file name:%s, err :%v", fileName, err)
 			}
@@ -58,7 +58,7 @@ func TestDecoderFaulty(t *testing.T) {
 				t.Logf("decoder rejects %s in metadata, err:%v", fileName, err)
 				return
 			}
-			err = dec.Decode(io.Discard)
+			_, err = io.Copy(io.Discard, dec)
 			if err != nil {
 				t.Logf("decoder rejects :%s on decoding, err:%v", fileName, err)
 				return

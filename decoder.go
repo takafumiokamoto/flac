@@ -10,6 +10,12 @@ import (
 	"io"
 )
 
+// PCM holds PCM samples with [StreamInfo]
+type PCM struct {
+	StreamInfo
+	Data []byte
+}
+
 var (
 	// ErrMarker is returned when the stream does not begin with the
 	// "fLaC" marker (Section 6).
@@ -152,7 +158,7 @@ func (d *Decoder) Read(p []byte) (int, error) {
 	return d.copyPending(p), nil
 }
 
-// Decode decodes the FLAC stream to interleaved PCM samples and writes it to w.
+// Decode decodes the FLAC stream to interleaved PCM samples and returns [PCM].
 //
 // The PCM samples are signed and little-endian, with channels interleaved
 // on a per-sample basis. If the bit depth is not a whole number of bytes,
@@ -167,11 +173,20 @@ func (d *Decoder) Read(p []byte) (int, error) {
 // Decode returns [ErrFrame] if an audio frame is invalid. This includes
 // a mismatch of the frame header CRC (Section 9.1.8) or the
 // frame footer CRC (Section 9.3).
-func (d *Decoder) Decode(w io.Writer) error {
-	if _, err := io.Copy(w, d); err != nil {
-		return err
+func Decode(r io.Reader) (*PCM, error) {
+	dec, err := NewDecoder(r)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	decoded, err := io.ReadAll(dec)
+	if err != nil {
+		return nil, err
+	}
+	pcm := &PCM{
+		StreamInfo: dec.StreamInfo(),
+		Data:       decoded,
+	}
+	return pcm, nil
 }
 
 func (d *Decoder) copyPending(p []byte) int {

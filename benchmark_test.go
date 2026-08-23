@@ -20,7 +20,7 @@ func BenchmarkTestFile(b *testing.B) {
 		if err != nil {
 			b.Fatalf("failed to initialize decoder: %v", err)
 		}
-		err = dec.Decode(io.Discard)
+		_, err = io.Copy(io.Discard, dec)
 		if err != nil {
 			b.Fatalf("decode error: %v", err)
 		}

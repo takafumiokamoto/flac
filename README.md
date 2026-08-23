@@ -2,12 +2,49 @@
 
 A pure Go FLAC ([RFC 9639](https://rfc-editor.org/rfc/rfc9639)) decoder with zero dependencies.
 
-## Status
+## Usage
 
-**working draft, not yet refactored...**  
-**動作するドラフト, これからリファクタ...**
+flac decodes a FLAC stream into PCM as defined in RFC 9639 §8.2: interleaved, signed, little-endian, each sample sign-extended to whole bytes.
 
-## Conformance test results
+### One-shot
+
+```go
+pcm, err := flac.Decode(r) // r is io.Reader (can be file or stream)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("%d Hz, %d ch, %d bit, %d bytes\n",
+    pcm.SampleRate, pcm.Channels, pcm.BitsPerSample, len(pcm.Data))
+```
+
+### Streaming
+
+```go
+dec, err := flac.NewDecoder(r)
+if err != nil {
+    log.Fatal(err)
+}
+// format is available via dec.StreamInfo()
+buf := make([]byte, 8192)
+for {
+    n, err := dec.Read(buf)
+    // do something with buf[:n]
+    if err == io.EOF {
+        break
+    }
+    if err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+`Decoder` is an `io.Reader`, so the PCM can be copied into any `io.Writer` with `io.Copy(w, dec)`.
+
+```go
+io.Copy(f, dec)
+```
+
+## Conformance test status
 
 Tested against the IETF FLAC decoder testbench
 [ietf-wg-cellar/flac-test-files](https://github.com/ietf-wg-cellar/flac-test-files) (commit `aa7b0c6`).
@@ -40,34 +77,3 @@ git clone --recurse-submodules https://github.com/takafumiokamoto/flac
 cd flac
 go test ./...
 ```
-
-## 適合テスト結果
-
-### 結果
-
-| グループ   | ファイル数 | 結果     |
-| ---------- | ---------: | -------- |
-| `subset`   |         64 | **合格** |
-| `uncommon` |         11 | 未実施   |
-| `faulty`   |         11 | **合格** |
-
-### 確認観点
-
-**subset**
-
-- 全てのストリームをエラーなくデコードできること
-- 全てのフレームヘッダのCRC-8が一致すること(RFC 9639 §9.1.8)
-- 全てのフレームフッタのCRC-16が一致すること(§9.3)
-- デコード後のPCMのMD5チェックサムがSTREAMINFOに格納されているものと一致すること(§8.2)
-
-**faulty**
-
-- デコーダーがクラッシュまたはハングしないこと
-
-## TODO
-
-- エラー処理の一貫性
-- パフォーマンス最適化(ストリーム対応)
-- テスト拡充
-- uncommonのテスト
-- ログ機能
