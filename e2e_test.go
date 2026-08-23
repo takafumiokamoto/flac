@@ -1,8 +1,8 @@
 package flac_test
 
 import (
-	"bytes"
 	"github.com/takafumiokamoto/flac"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -17,16 +17,19 @@ func TestDecoderSubset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to glob flac files:%v", err)
 	}
-	for _, f := range files {
-		t.Run(f, func(t *testing.T) {
-			// os.Openにするとループ内でdeferすることによりメモリ消費が増加する。
-			b, err := os.ReadFile(f)
+	for _, fileName := range files {
+		t.Run(fileName, func(t *testing.T) {
+			f, err := os.Open(fileName)
 			if err != nil {
-				t.Fatalf("failed to read :%s, err:%v", f, err)
+				t.Fatalf("failed to read :%s, err:%v", fileName, err)
 			}
-			_, err = flac.Decode(bytes.NewReader(b))
+			dec, err := flac.NewDecoder(f)
 			if err != nil {
-				t.Errorf("test bench failed: file name:%s, err :%v", f, err)
+				t.Fatalf("failed to initialize decoder: err:%v", err)
+			}
+			err = dec.Decode(io.Discard)
+			if err != nil {
+				t.Errorf("test bench failed: file name:%s, err :%v", fileName, err)
 			}
 		})
 	}
@@ -42,16 +45,21 @@ func TestDecoderFaulty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to glob flac files:%v", err)
 	}
-	for _, f := range files {
-		t.Run(f, func(t *testing.T) {
-			// os.Openにするとループ内でdeferすることによりメモリ消費が増加する。
-			b, err := os.ReadFile(f)
+	for _, fileName := range files {
+		t.Run(fileName, func(t *testing.T) {
+			f, err := os.Open(fileName)
 			if err != nil {
-				t.Fatalf("failed to read :%s, err:%v", f, err)
+				t.Fatalf("failed to read :%s, err:%v", fileName, err)
 			}
-			_, err = flac.Decode(bytes.NewReader(b))
+			dec, err := flac.NewDecoder(f)
 			if err != nil {
-				t.Logf("rejected: %v", err)
+				t.Logf("decoder rejects %s in metadata, err:%v", fileName, err)
+				return
+			}
+			err = dec.Decode(io.Discard)
+			if err != nil {
+				t.Logf("decoder rejects :%s on decoding, err:%v", fileName, err)
+				return
 			}
 		})
 	}

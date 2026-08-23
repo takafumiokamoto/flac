@@ -3,6 +3,7 @@ package flac_test
 import (
 	"bytes"
 	"github.com/takafumiokamoto/flac"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -15,7 +16,11 @@ func BenchmarkTestFile(b *testing.B) {
 		b.Fatalf("failed to read benchmark file:%s, err:%v", fileName, err)
 	}
 	for b.Loop() {
-		_, err := flac.Decode(bytes.NewReader(f))
+		dec, err := flac.NewDecoder(bytes.NewReader(f))
+		if err != nil {
+			b.Fatalf("failed to initialize decoder: %v", err)
+		}
+		err = dec.Decode(io.Discard)
 		if err != nil {
 			b.Fatalf("decode error: %v", err)
 		}

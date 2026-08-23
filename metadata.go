@@ -133,7 +133,7 @@ func readStreamInfo(r io.Reader) (StreamInfo, error) {
 		Channels:      channels,
 		BitsPerSample: bitsPerSample,
 		TotalSamples:  totalSamples,
-		Md5Sum:        md5Sum,
+		MD5Sum:        md5Sum,
 	}
 	if err := validateStreamInfo(st); err != nil {
 		return StreamInfo{}, err

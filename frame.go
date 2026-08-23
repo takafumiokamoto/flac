@@ -1,6 +1,7 @@
 package flac
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -73,7 +74,135 @@ func (c channelAssignment) count() uint {
 	return uint(c + 1)
 }
 
+type frameDecoder struct {
+	r          *bufio.Reader
+	si         StreamInfo
+	frameCRC16 uint16
+}
+
+func newFrameDecoder(r *bufio.Reader, si StreamInfo) *frameDecoder {
+	return &frameDecoder{
+		r:  r,
+		si: si,
+	}
+}
+
+func (f *frameDecoder) setCRC16(b []byte) {
+	f.frameCRC16 = crc16(b)
+}
+
+func (f *frameDecoder) ReadByte() (byte, error) {
+	b, err := f.r.ReadByte()
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			// bitReaderで読む部分で途中でEOFになる場合はフレームが途中で切れている。
+			// 呼び出し元はio.EOFが返却されると正常終了する慣例なので、io.ErrUnexpectedEOFに置き換える
+			return 0, io.ErrUnexpectedEOF
+		}
+		return 0, err
+	}
+	// crcを逐次で計算する。
+	f.frameCRC16 = crc16Update(f.frameCRC16, b)
+	return b, nil
+}
+
+// Frame Header: https://www.rfc-editor.org/rfc/rfc9639.html#section-9.1
+//
+//	固定部なのは5バイト
+//	  §9.1   frame sync code 15ビット + blocking strategy bit 1ビット      = 2バイト
+//	  §9.1.1 block size bits 4ビット  + §9.1.2 sample rate bits 4ビット    = 1バイト
+//	  §9.1.3 channel bits 4ビット + §9.1.4 bit depth bits 3 + reserved 1    = 1バイト
+//	  §9.1.8 CRC-8                     1バイト
+const (
+	// 固定部 + coded number(最大 7)+ uncommon block size(最大 2)+ uncommon sample rate(最大 2)
+	maxFrameHeaderSize = 5 + 7 + 2 + 2 // 16
+	// 固定部 + coded number(最小 1)+ uncommon block size(なし)+ uncommon sample rate(なし)
+	minFrameHeaderSize = 5 + 1 + 0 + 0 // 6
+)
+
+func (f *frameDecoder) decodeFrame() (frameHeader, []int64, error) {
+	hBuf, err := f.r.Peek(16)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return frameHeader{}, nil, err
+	}
+	switch {
+	case len(hBuf) == 0:
+		return frameHeader{}, nil, io.EOF
+	case len(hBuf) < minFrameHeaderSize:
+		return frameHeader{}, nil, io.ErrUnexpectedEOF
+	}
+
+	h, consumed, err := readFrameHeader(hBuf, f.si)
+	if err != nil {
+		return frameHeader{}, nil, err
+	}
+	// frameのCRC16の逐次計算
+	f.setCRC16(hBuf[:consumed])
+
+	// 実際に読んだ分だけ捨てる
+	if _, err := f.r.Discard(consumed); err != nil {
+		return frameHeader{}, nil, fmt.Errorf("flac: failed to discard consumed bytes when reading frame header:%w", err)
+	}
+
+	br := newBitReader(f)
+	// FIXME: 使い回しのバッファを検討
+	var samples []int64
+	switch h.channel {
+	case channelsMono, channelsStereo, channels3, channels4, channels5, channels6, channels7, channels8:
+		s, err := decodeIndependent(br, h.channel, h.bitDepth, h.blockSize)
+		if err != nil {
+			return frameHeader{}, nil, err
+		}
+		samples = s
+	case channelsLeftSide:
+		s, err := decodeLeftSide(br, h.bitDepth, h.blockSize)
+		if err != nil {
+			return frameHeader{}, nil, err
+		}
+		samples = s
+	case channelsSideRight:
+		s, err := decodeSideRight(br, h.bitDepth, h.blockSize)
+		if err != nil {
+			return frameHeader{}, nil, err
+		}
+		samples = s
+	case channelsMidSide:
+		s, err := decodeMidSide(br, h.bitDepth, h.blockSize)
+		if err != nil {
+			return frameHeader{}, nil, err
+		}
+		samples = s
+	default:
+		return frameHeader{}, nil, fmt.Errorf("flac: invalid channel :%d", h.channel)
+	}
+
+	// 余りを読み込んで次のバイト境界CRC16の始まりに揃える
+	if _, err = br.readBits(br.cnt); err != nil {
+		return frameHeader{}, nil, fmt.Errorf("flac: failed to read padding bits:%w", err)
+	}
+
+	// CRC-16の直前までのCRC16
+	wantCRC16 := f.frameCRC16
+
+	fistCRC16Bits, err := f.ReadByte()
+	if err != nil {
+		return frameHeader{}, nil, fmt.Errorf("flac: faild to read first byte of CRC-16:%w", err)
+	}
+	secondCRC16Bits, err := f.ReadByte()
+	if err != nil {
+		return frameHeader{}, nil, fmt.Errorf("flac: faild to read first byte of CRC-16:%w", err)
+	}
+	storedCRC := uint16(fistCRC16Bits)<<8 | uint16(secondCRC16Bits)
+	// CRC16の検証
+	if storedCRC != wantCRC16 {
+		return frameHeader{}, nil, fmt.Errorf("%w: CRC-16 does not match: stored:%02x, got:%02x", errCRC, storedCRC, wantCRC16)
+	}
+
+	return h, samples, nil
+}
+
 func readFrameHeader(b []byte, si StreamInfo) (frameHeader, int, error) {
+	// 長さは事前に呼び出し元でチェック済みではある。
 	if len(b) < 4 {
 		return frameHeader{}, 0, fmt.Errorf("flac: frame header is shorter than 4 bytes (got %d): %w", len(b), io.ErrUnexpectedEOF)
 	}
@@ -321,6 +450,7 @@ func decodeIndependent(
 	}
 	return samples, nil
 }
+
 func decodeMidSide(br *bitReader, bitDepth uint8, blockSize uint16) ([]int64, error) {
 	// FIXME: (perf) 事前バッファ
 	var samples []int64
@@ -347,6 +477,7 @@ func decodeMidSide(br *bitReader, bitDepth uint8, blockSize uint16) ([]int64, er
 	samples = append(samples, right...)
 	return samples, nil
 }
+
 func decodeLeftSide(br *bitReader, bitDepth uint8, blockSize uint16) ([]int64, error) {
 	// FIXME: (perf) 事前バッファ
 	var samples []int64
@@ -368,6 +499,7 @@ func decodeLeftSide(br *bitReader, bitDepth uint8, blockSize uint16) ([]int64, e
 	samples = append(samples, right...)
 	return samples, nil
 }
+
 func decodeSideRight(br *bitReader, bitDepth uint8, blockSize uint16) ([]int64, error) {
 	// FIXME: (perf) 事前バッファ
 	var samples []int64

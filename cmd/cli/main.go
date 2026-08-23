@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -29,9 +30,22 @@ func run() error {
 		return fmt.Errorf("failed to open file:%w", err)
 	}
 	defer f.Close()
-	pcm, err := flac.Decode(f)
+
+	dec, err := flac.NewDecoder(f)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to initialize decoder: %v", err)
+	}
+
+	var buf bytes.Buffer
+
+	err = dec.Decode(&buf)
+	if err != nil {
+		return fmt.Errorf("deocde error err:%v", err)
+	}
+
+	pcm := PCM{
+		Data:       buf.Bytes(),
+		StreamInfo: dec.StreamInfo(),
 	}
 	wav, err := toWAV(pcm)
 	if err != nil {
@@ -52,8 +66,13 @@ func run() error {
 	return nil
 }
 
+type PCM struct {
+	flac.StreamInfo
+	Data []byte
+}
+
 // toWAV wraps decoded PCM in a RIFF/WAVE container (WAVE_FORMAT_PCM, 44-byte header).
-func toWAV(pcm flac.PCM) ([]byte, error) {
+func toWAV(pcm PCM) ([]byte, error) {
 	// WAV は RFC 9639 の範囲外。レイアウトは Microsoft の RIFF/WAVE 仕様(WAVEFORMATEX)に従う。
 	// Decode が返す Data は §8.2 の並び(インターリーブ・LE・バイト境界まで符号拡張)で、
 	// 16/24/32 bit ならそのまま data チャンクの中身になる。

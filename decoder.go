@@ -2,7 +2,7 @@
 package flac
 
 import (
-	"bytes"
+	"bufio"
 	"crypto/md5"
 	"errors"
 	"fmt"
@@ -45,12 +45,12 @@ type StreamInfo struct {
 	Channels      uint8
 	BitsPerSample uint8
 	TotalSamples  uint64
-	Md5Sum        [16]byte
+	MD5Sum        [16]byte
 }
 
 // Decoder decodes a FLAC steram.
 type Decoder struct {
-	r    io.Reader
+	r    *bufio.Reader
 	meta Metadata
 }
 
@@ -59,15 +59,16 @@ type Decoder struct {
 // NewDecoder reads the "fLaC" marker and all metadata blocks before returning.
 // These metadata blocks are available via [Decoder.Metadata] and [Decoder.StreamInfo]
 func NewDecoder(r io.Reader) (*Decoder, error) {
-	if err := validateMarker(r); err != nil {
+	rd := bufio.NewReader(r)
+	if err := validateMarker(rd); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrMarker, err)
 	}
-	meta, err := readMetadata(r)
+	meta, err := readMetadata(rd)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrMetaData, err)
 	}
 	return &Decoder{
-		r:    r,
+		r:    rd,
 		meta: meta,
 	}, nil
 }
@@ -97,58 +98,32 @@ func (d *Decoder) StreamInfo() StreamInfo {
 // a mismatch of the frame header CRC (Section 9.1.8) or the
 // frame footer CRC (Section 9.3).
 func (d *Decoder) Decode(w io.Writer) error {
-	// FIMXE: mock
-	return nil
-}
-
-type PCM struct {
-	StreamInfo
-	Data []byte
-}
-
-func Decode(r io.Reader) (PCM, error) {
-	// FIXME: ストリーム化
-	b, err := io.ReadAll(r)
-	if err != nil {
-		return PCM{}, fmt.Errorf("%w: %w", ErrRead, err)
-	}
-	br := bytes.NewReader(b)
-	if err := validateMarker(br); err != nil {
-		return PCM{}, fmt.Errorf("%w: %w", ErrMarker, err)
-	}
-	meta, err := readMetadata(br)
-	if err != nil {
-		return PCM{}, fmt.Errorf("%w: %w", ErrMetaData, err)
-	}
-	si := meta.StreamInfo
-	offset := len(b) - br.Len()
-	// FIXME: サイズ予測ができるように
-	var sample []byte
-	for offset < len(b) {
-		// TODO: Frameのデコードは並行して行えるが、デコードをしないと次のFrameのバイト境界が分からない。
-		// もしgoroutineで並行デコードするなら事前にバイト境界のみ先読みする必要がある。
-		header, frame, next, err := decodeFrame(b, offset, si)
+	fr := newFrameDecoder(d.r, d.meta.StreamInfo)
+	hash := md5.New()
+	mw := io.MultiWriter(w, hash)
+	for {
+		h, samples, err := fr.decodeFrame()
 		if err != nil {
-			return PCM{}, fmt.Errorf("%w: %w", ErrFrame, err)
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return fmt.Errorf("%w: %w", ErrFrame, err)
 		}
-		offset = next
-		// PCMに変換
-		sample = append(sample, toPCMSample(header, frame)...)
+		// interlaved PCMに変換
+		if _, err := mw.Write(toPCMSample(h, samples)); err != nil {
+			return err
+		}
 	}
-	pcm := PCM{
-		Data:       sample,
-		StreamInfo: si,
+	wantMD5Sum := d.meta.StreamInfo.MD5Sum
+	if wantMD5Sum == [16]byte{} {
+		// stream infoにMD5が設定されていなければMD5のチェックをしない
+		return nil
 	}
-	if si.Md5Sum == [16]byte{} {
-		// MD5がstreaminfoに格納されていない場合はMD5の比較を行わない
-		return pcm, nil
+	gotMD5Sum := [16]byte(hash.Sum(nil))
+	if wantMD5Sum != gotMD5Sum {
+		return fmt.Errorf("%w: want:%x, got:%x", ErrMD5, wantMD5Sum, gotMD5Sum)
 	}
-	// デコード結果をMD5で検証
-	sum := md5.Sum(sample)
-	if sum != si.Md5Sum {
-		return PCM{}, fmt.Errorf("%w: stored:%x, got:%x", ErrMD5, si.Md5Sum, sum)
-	}
-	return pcm, nil
+	return nil
 }
 
 func toPCMSample(header frameHeader, frame []int64) []byte {

@@ -118,7 +118,7 @@ func TestReadStreamInfo(t *testing.T) {
 				Channels:      6,
 				BitsPerSample: 20,
 				TotalSamples:  0xA_0000_0001,
-				Md5Sum: [16]byte{
+				MD5Sum: [16]byte{
 					0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
 					0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 				},
@@ -263,7 +263,7 @@ func TestReadStreamInfoRealFile(t *testing.T) {
 				t.Fatalf("bad expected MD5 literal %q", tt.wantMD5)
 			}
 			want := tt.want
-			copy(want.Md5Sum[:], b)
+			copy(want.MD5Sum[:], b)
 			got, err := readStreamInfo(bytes.NewReader(f[8:]))
 			if err != nil {
 				t.Fatalf("readStreamInfo() error = %v", err)
@@ -308,7 +308,7 @@ func TestReadMetadata(t *testing.T) {
 		Channels:      6,
 		BitsPerSample: 20,
 		TotalSamples:  0xA_0000_0001,
-		Md5Sum: [16]byte{
+		MD5Sum: [16]byte{
 			0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
 			0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
 		},
