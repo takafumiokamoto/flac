@@ -35,3 +35,5 @@ go.work.sum
 
 music/
 *.wav
+mem.prof
+cpu.prof

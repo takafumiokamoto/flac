@@ -6,4 +6,4 @@ tasks:
   bench:
     desc: run benchmark
     cmds:
-      - go test -bench=. -benchmem -run="^$" .
+      - go test -bench=. -benchmem -memprofile mem.prof -cpuprofile cpu.prof -run="^$" .
