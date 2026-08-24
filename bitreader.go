@@ -23,6 +23,12 @@ func newBitReader(r io.ByteReader) *bitReader {
 	}
 }
 
+func (br *bitReader) reset(r io.ByteReader) {
+	br.r = r
+	br.acc = 0
+	br.cnt = 0
+}
+
 // fill buffers bytes until at least n bits are available in the accumulator.
 func (br *bitReader) fill(n uint) error {
 	if n > 57 {

@@ -78,6 +78,7 @@ type frameDecoder struct {
 	si         StreamInfo
 	frameCRC16 uint16
 	buf        []int64
+	br         bitReader
 }
 
 func newFrameDecoder(r *bufio.Reader, si StreamInfo) *frameDecoder {
@@ -157,23 +158,23 @@ func (f *frameDecoder) decodeFrame() (frameHeader, []int64, error) {
 		return frameHeader{}, nil, fmt.Errorf("flac: failed to discard consumed bytes when reading frame header:%w", err)
 	}
 
-	br := newBitReader(f)
+	f.br.reset(f)
 	dst := f.frameBuf(int(h.blockSize) * int(h.channel.count()))
 	switch h.channel {
 	case channelsMono, channelsStereo, channels3, channels4, channels5, channels6, channels7, channels8:
-		if err := decodeIndependent(br, h.channel, h.bitDepth, h.blockSize, dst); err != nil {
+		if err := decodeIndependent(&f.br, h.channel, h.bitDepth, h.blockSize, dst); err != nil {
 			return frameHeader{}, nil, err
 		}
 	case channelsLeftSide:
-		if err := decodeLeftSide(br, h.bitDepth, h.blockSize, dst); err != nil {
+		if err := decodeLeftSide(&f.br, h.bitDepth, h.blockSize, dst); err != nil {
 			return frameHeader{}, nil, err
 		}
 	case channelsSideRight:
-		if err := decodeSideRight(br, h.bitDepth, h.blockSize, dst); err != nil {
+		if err := decodeSideRight(&f.br, h.bitDepth, h.blockSize, dst); err != nil {
 			return frameHeader{}, nil, err
 		}
 	case channelsMidSide:
-		if err := decodeMidSide(br, h.bitDepth, h.blockSize, dst); err != nil {
+		if err := decodeMidSide(&f.br, h.bitDepth, h.blockSize, dst); err != nil {
 			return frameHeader{}, nil, err
 		}
 	default:
@@ -181,7 +182,7 @@ func (f *frameDecoder) decodeFrame() (frameHeader, []int64, error) {
 	}
 
 	// 余りを読み込んで次のバイト境界CRC16の始まりに揃える
-	if _, err = br.readBits(br.cnt); err != nil {
+	if _, err = f.br.readBits(f.br.cnt); err != nil {
 		return frameHeader{}, nil, fmt.Errorf("flac: failed to read padding bits: %w", err)
 	}
 
