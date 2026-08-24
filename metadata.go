@@ -8,7 +8,7 @@ import (
 
 var (
 	errFirstBlockIsNotStreamInfo = errors.New("first metadata block is not streaminfo")
-	errInvalidStremInfoLength    = errors.New("invalid streaminfo length")
+	errInvalidStreamInfoLength   = errors.New("invalid streaminfo length")
 	errDuplicatedStreamInfo      = errors.New("streaminfo appears more than once")
 	errDuplicatedSeekTable       = errors.New("seek table appears more than once")
 	errDuplicatedVorbisComment   = errors.New("vorbis comment appears more than once")
@@ -35,7 +35,7 @@ func readMetadata(r io.Reader) (Metadata, error) {
 	}
 	if firstMetaHeader.length != streamInfoLength {
 		return Metadata{}, fmt.Errorf("%w: got %d, want %d",
-			errInvalidStremInfoLength, firstMetaHeader.length, streamInfoLength)
+			errInvalidStreamInfoLength, firstMetaHeader.length, streamInfoLength)
 	}
 	st, err := readStreamInfo(r)
 	if err != nil {

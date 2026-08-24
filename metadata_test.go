@@ -329,7 +329,7 @@ func TestReadMetadata(t *testing.T) {
 				0x00, 0x00,
 				0x23, // 35バイト
 			},
-			Metadata{}, errInvalidStremInfoLength},
+			Metadata{}, errInvalidStreamInfoLength},
 		{"first metadata header is streamInfo and last metadata",
 			slices.Concat([]byte{0x80, 0x00, 0x00, 0x22}, validStreamInfoBytes, []byte{}),
 			Metadata{

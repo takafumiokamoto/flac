@@ -189,15 +189,15 @@ func (f *frameDecoder) decodeFrame() (frameHeader, []int64, error) {
 	// CRC-16の直前までのCRC16
 	wantCRC16 := f.frameCRC16
 
-	fistCRC16Bits, err := f.ReadByte()
+	firstCRC16Bits, err := f.ReadByte()
 	if err != nil {
-		return frameHeader{}, nil, fmt.Errorf("faild to read first byte of CRC-16:%w", err)
+		return frameHeader{}, nil, fmt.Errorf("failed to read first byte of CRC-16:%w", err)
 	}
 	secondCRC16Bits, err := f.ReadByte()
 	if err != nil {
-		return frameHeader{}, nil, fmt.Errorf("faild to read first byte of CRC-16:%w", err)
+		return frameHeader{}, nil, fmt.Errorf("failed to read second byte of CRC-16:%w", err)
 	}
-	storedCRC := uint16(fistCRC16Bits)<<8 | uint16(secondCRC16Bits)
+	storedCRC := uint16(firstCRC16Bits)<<8 | uint16(secondCRC16Bits)
 	// CRC16の検証
 	if storedCRC != wantCRC16 {
 		return frameHeader{}, nil, fmt.Errorf("%w: CRC-16 does not match: stored:%02x, got:%02x", errCRC, storedCRC, wantCRC16)

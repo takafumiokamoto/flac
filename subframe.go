@@ -29,7 +29,7 @@ func decodeSubframe(br *bitReader, bps uint8, blockSize uint16, dst []int64) err
 		return fmt.Errorf("failed to read subframe header:%w", err)
 	}
 	if h.wastedBits >= uint64(bps) {
-		return fmt.Errorf("wasted bits must be smaller bit per sample, wasted bits:%d, bit per sample:%d", h.wastedBits, bps)
+		return fmt.Errorf("wasted bits must be smaller than bits per sample, wasted bits:%d, bit per sample:%d", h.wastedBits, bps)
 	}
 	bps -= uint8(h.wastedBits)
 	switch h.typ {
@@ -261,11 +261,11 @@ func decodeResidual(br *bitReader, predictorOrder uint8, blockSize uint16, dst [
 	partitionSize := blockSize >> partitionOrder
 
 	if int(blockSize)%partitionCount != 0 {
-		return fmt.Errorf("invalid partiion order, block size should be divisible by partition count, partiion order:%b, blocksize:%b", partitionOrder, blockSize)
+		return fmt.Errorf("invalid partition order, block size should be divisible by partition count, partition order:%b, blocksize:%b", partitionOrder, blockSize)
 	}
 
 	if uint64(partitionSize) <= uint64(predictorOrder) {
-		return fmt.Errorf("partition order should be smaller than partition size, partiion order:%b, partition size:%b", partitionOrder, partitionSize)
+		return fmt.Errorf("predictor order must be smaller than partition size, predictor order:%b, partition size:%b", predictorOrder, partitionSize)
 	}
 
 	n := 0
@@ -287,13 +287,13 @@ func decodeResidual(br *bitReader, predictorOrder uint8, blockSize uint16, dst [
 			// escapeの場合は次の5bitに残差の幅が記載されている
 			residualWidth, err := br.readBits(5)
 			if err != nil {
-				return fmt.Errorf("failed to read residual witdth (escape sequeence path), partition index:%d, err%w", i, err)
+				return fmt.Errorf("failed to read residual width (escape sequence path), partition index:%d, err:%w", i, err)
 			}
 			// このパーティションの残りは生の残差として扱う。
 			for j := range residualCount {
 				residual, err := br.readSigned(uint(residualWidth))
 				if err != nil {
-					return fmt.Errorf("failed to read residual (escape sequeence path), partition index:%d, residual index:%d, err%w", i, j, err)
+					return fmt.Errorf("failed to read residual (escape sequence path), partition index:%d, residual index:%d, err:%w", i, j, err)
 				}
 				dst[n] = int64(residual)
 				n++
@@ -304,12 +304,12 @@ func decodeResidual(br *bitReader, predictorOrder uint8, blockSize uint16, dst [
 			// 商
 			quotient, err := br.readUnary()
 			if err != nil {
-				return fmt.Errorf("failed to read quotient, partition index:%d, residual index:%d, err%w", i, j, err)
+				return fmt.Errorf("failed to read quotient, partition index:%d, residual index:%d, err:%w", i, j, err)
 			}
 			// 余り
 			remainder, err := br.readBits(uint(riceParam))
 			if err != nil {
-				return fmt.Errorf("failed to read remainder, partition index:%d, residual index:%d, err%w", i, j, err)
+				return fmt.Errorf("failed to read remainder, partition index:%d, residual index:%d, err:%w", i, j, err)
 			}
 			// 商と余りを連結。riceParamとremainderは桁数が一致している
 			folded := (quotient << riceParam) | remainder
