@@ -213,13 +213,14 @@ func (d *Decoder) finish() error {
 	return nil
 }
 
-func toPCMSample(header frameHeader, frame []int64) []byte {
-	var buf []byte
-	n := (header.bitDepth + 7) / 8 // ビット深度をバイト位置に切り上げ
-	for i := range header.blockSize {
-		for j := range header.channel.count() { // チャンネルを順番に処理
-			s := frame[int(j)*int(header.blockSize)+int(i)] // 各チャンネル(pannar-flat上の)の開始位置を特定
-			for k := range n {
+func toPCMSample(h frameHeader, frame []int64) []byte {
+	bytesPerSample := (h.bitDepth + 7) / 8 // ビット深度をバイト位置に切り上げ
+	capacity := int(h.channel.count()) * int(h.blockSize) * int(bytesPerSample)
+	buf := make([]byte, 0, capacity)
+	for i := range h.blockSize {
+		for j := range h.channel.count() { // チャンネルを順番に処理
+			s := frame[int(j)*int(h.blockSize)+int(i)] // 各チャンネル(pannar-flat上の)の開始位置を特定
+			for k := range bytesPerSample {
 				// "下位"からビット深度分をシフトして格納
 				// 下位バイトから格納するので結果はlittle-endianになる。
 				buf = append(buf, byte(s>>(8*k)))
