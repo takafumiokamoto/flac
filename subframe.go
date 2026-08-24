@@ -20,45 +20,42 @@ type subframeHeader struct {
 	wastedBits     uint64
 }
 
-func decodeSubframe(br *bitReader, bps uint8, blockSize uint16) ([]int64, error) {
+func decodeSubframe(br *bitReader, bps uint8, blockSize uint16, dst []int64) error {
+	if len(dst) != int(blockSize) {
+		return fmt.Errorf("flac: length of destination buffer must be equal to block size: destination buffer:%d, block size:%d", len(dst), int(blockSize))
+	}
 	h, err := readSubFrameHeader(br)
 	if err != nil {
-		return nil, fmt.Errorf("flac: failed to read subframe header:%w", err)
+		return fmt.Errorf("flac: failed to read subframe header:%w", err)
 	}
 	if h.wastedBits >= uint64(bps) {
-		return nil, fmt.Errorf("flac: wasted bits must be smaller bit per sample, wasted bits:%d, bit per sample:%d", h.wastedBits, bps)
+		return fmt.Errorf("flac: wasted bits must be smaller bit per sample, wasted bits:%d, bit per sample:%d", h.wastedBits, bps)
 	}
 	bps -= uint8(h.wastedBits)
-	// FIXME: (perf)事前バッファ
-	var samples []int64
 	switch h.typ {
 	case subframeConstant:
-		samples, err = decodeConstant(br, bps, blockSize)
-		if err != nil {
-			return nil, fmt.Errorf("flac: failed to decode constant subframe:%w", err)
+		if err := decodeConstant(br, bps, blockSize, dst[:]); err != nil {
+			return fmt.Errorf("flac: failed to decode constant subframe:%w", err)
 		}
 	case subframeVerbatim:
-		samples, err = decodeVerbatim(br, bps, blockSize)
-		if err != nil {
-			return nil, fmt.Errorf("flac: failed to decode verbatim subframe:%w", err)
+		if err := decodeVerbatim(br, bps, blockSize, dst[:]); err != nil {
+			return fmt.Errorf("flac: failed to decode verbatim subframe:%w", err)
 		}
 	case subframeFixed:
-		samples, err = decodeFixed(br, h.predictorOrder, bps, blockSize)
-		if err != nil {
-			return nil, fmt.Errorf("flac: failed to decode fixed predictor subframe:%w", err)
+		if err := decodeFixed(br, h.predictorOrder, bps, blockSize, dst[:]); err != nil {
+			return fmt.Errorf("flac: failed to decode fixed predictor subframe:%w", err)
 		}
 	case subframeLPC:
-		samples, err = decodeLPC(br, h.predictorOrder, bps, blockSize)
-		if err != nil {
-			return nil, fmt.Errorf("flac: failed to decode linear predictor subframe:%w", err)
+		if err := decodeLPC(br, h.predictorOrder, bps, blockSize, dst[:]); err != nil {
+			return fmt.Errorf("flac: failed to decode linear predictor subframe:%w", err)
 		}
 	default:
-		return nil, fmt.Errorf("flac: invalid subframe type:%d", h.typ)
+		return fmt.Errorf("flac: invalid subframe type:%d", h.typ)
 	}
-	for i := range samples {
-		samples[i] <<= h.wastedBits
+	for i := range dst {
+		dst[i] <<= h.wastedBits
 	}
-	return samples, nil
+	return nil
 }
 
 func readSubFrameHeader(br *bitReader) (subframeHeader, error) {
@@ -111,48 +108,45 @@ func readSubFrameHeader(br *bitReader) (subframeHeader, error) {
 
 }
 
-func decodeConstant(br *bitReader, bps uint8, blockSize uint16) ([]int64, error) {
+func decodeConstant(br *bitReader, bps uint8, blockSize uint16, dst []int64) error {
 	s, err := br.readSigned(uint(bps))
 	if err != nil {
-		return nil, fmt.Errorf("flac: failed to read constant subframe:%w", err)
+		return fmt.Errorf("flac: failed to read constant subframe:%w", err)
 	}
-	samples := make([]int64, blockSize)
-	for i := range samples {
-		samples[i] = s
+	for i := range blockSize {
+		dst[i] = s
 	}
-	return samples, nil
+	return nil
 }
 
-func decodeVerbatim(br *bitReader, bps uint8, blockSize uint16) ([]int64, error) {
-	samples := make([]int64, blockSize)
+func decodeVerbatim(br *bitReader, bps uint8, blockSize uint16, dst []int64) error {
 	for i := range blockSize {
 		s, err := br.readSigned(uint(bps))
 		if err != nil {
-			return nil, fmt.Errorf("flac: failed to read verbatim subframe:%w", err)
+			return fmt.Errorf("flac: failed to read verbatim subframe:%w", err)
 		}
-		samples[i] = s
+		dst[i] = s
 	}
-	return samples, nil
+	return nil
 }
 
-func decodeFixed(br *bitReader, order uint8, bps uint8, blockSize uint16) ([]int64, error) {
+func decodeFixed(br *bitReader, order uint8, bps uint8, blockSize uint16, dst []int64) error {
 	if blockSize <= uint16(order) {
-		return nil, fmt.Errorf("flac: block size must be larger than prediction order: blocksize:%d, prediction order:%d", blockSize, order)
+		return fmt.Errorf("flac: block size must be larger than prediction order: blocksize:%d, prediction order:%d", blockSize, order)
 	}
 	if order > 4 {
-		return nil, fmt.Errorf("flac: invalid prediction order:%d", order)
+		return fmt.Errorf("flac: invalid prediction order:%d", order)
 	}
-	dst := make([]int64, blockSize)
 	for i := range int(order) {
 		sample, err := br.readSigned(uint(bps))
 		if err != nil {
-			return nil, fmt.Errorf("flac: failed to read warm up samples: %w", err)
+			return fmt.Errorf("flac: failed to read warm up samples: %w", err)
 		}
 		dst[i] = sample
 	}
 	err := decodeResidual(br, order, blockSize, dst[order:])
 	if err != nil {
-		return nil, fmt.Errorf("flac: failed to read residuals:%w", err)
+		return fmt.Errorf("flac: failed to read residuals:%w", err)
 	}
 	for i := int(order); i < len(dst); i++ {
 		var prediction int64
@@ -174,47 +168,46 @@ func decodeFixed(br *bitReader, order uint8, bps uint8, blockSize uint16) ([]int
 		}
 		dst[i] = prediction + dst[i]
 	}
-	return dst, nil
+	return nil
 }
 
-func decodeLPC(br *bitReader, order uint8, bps uint8, blockSize uint16) ([]int64, error) {
+func decodeLPC(br *bitReader, order uint8, bps uint8, blockSize uint16, dst []int64) error {
 	if blockSize <= uint16(order) {
-		return nil, fmt.Errorf("flac: block size must be larger than prediction order: blocksize:%d, prediction order:%d", blockSize, order)
+		return fmt.Errorf("flac: block size must be larger than prediction order: blocksize:%d, prediction order:%d", blockSize, order)
 	}
-	dst := make([]int64, blockSize)
 	for i := range int(order) {
 		sample, err := br.readSigned(uint(bps))
 		if err != nil {
-			return nil, fmt.Errorf("flac: failed to read warm up samples: %w", err)
+			return fmt.Errorf("flac: failed to read warm up samples: %w", err)
 		}
 		dst[i] = sample
 	}
 	precision, err := br.readBits(4)
 	if err != nil {
-		return nil, fmt.Errorf("flac: failed to read precision: %w", err)
+		return fmt.Errorf("flac: failed to read precision: %w", err)
 	}
 	if precision == 0b1111 {
-		return nil, errors.New("flac: invalid precision 0b1111")
+		return errors.New("flac: invalid precision 0b1111")
 	}
 	precision += 1 // precisionは-1の値が格納されている
 	shift, err := br.readSigned(5)
 	if err != nil {
-		return nil, fmt.Errorf("flac: failed to read shift: %w", err)
+		return fmt.Errorf("flac: failed to read shift: %w", err)
 	}
 	if shift < 0 {
-		return nil, fmt.Errorf("flac: invalid shift:%d", shift)
+		return fmt.Errorf("flac: invalid shift:%d", shift)
 	}
 	coefficients := make([]int64, 0, order)
 	for i := range order {
 		coefficient, err := br.readSigned(uint(precision))
 		if err != nil {
-			return nil, fmt.Errorf("flac: failed to read coefficient: index:%d, err:%w", i, err)
+			return fmt.Errorf("flac: failed to read coefficient: index:%d, err:%w", i, err)
 		}
 		coefficients = append(coefficients, coefficient)
 	}
 	err = decodeResidual(br, order, blockSize, dst[order:])
 	if err != nil {
-		return nil, fmt.Errorf("flac: failed to read residuals:%w", err)
+		return fmt.Errorf("flac: failed to read residuals:%w", err)
 	}
 	for i := int(order); i < len(dst); i++ {
 		// 論理シフトすると左に0が入って巨大な整数になってしまう。
@@ -231,7 +224,7 @@ func decodeLPC(br *bitReader, order uint8, bps uint8, blockSize uint16) ([]int64
 		// ここではシフト分を戻してからresidualを足す。
 		dst[i] = (sum >> shift) + dst[i]
 	}
-	return dst, nil
+	return nil
 }
 
 func decodeResidual(br *bitReader, predictorOrder uint8, blockSize uint16, dst []int64) error {

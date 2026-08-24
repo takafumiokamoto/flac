@@ -388,27 +388,25 @@ func decodeIndependent(
 ) (
 	[]int64, error,
 ) {
-	// FIXME: (perf) 事前バッファ
-	var samples []int64
-	for i := range channel.count() {
-		s, err := decodeSubframe(br, bitDepth, blockSize)
-		if err != nil {
+	bs := int(blockSize)
+	dst := make([]int64, bs*int(channel.count()))
+	for i := range int(channel.count()) {
+		if err := decodeSubframe(br, bitDepth, blockSize, dst[i*bs:(i+1)*bs]); err != nil { // i番目のblockの先頭から次のblockの先頭まで
 			return nil, fmt.Errorf("flac: failed to decode subframe %d, err:%w", i, err)
 		}
-		samples = append(samples, s...)
 	}
-	return samples, nil
+	return dst, nil
 }
 
 func decodeMidSide(br *bitReader, bitDepth uint8, blockSize uint16) ([]int64, error) {
 	// leftとrightの2ブロック分
-	samples := make([]int64, int(blockSize)*2)
-	mid, err := decodeSubframe(br, bitDepth, blockSize)
-	if err != nil {
+	dst := make([]int64, int(blockSize)*2)
+	mid := dst[:blockSize]
+	if err := decodeSubframe(br, bitDepth, blockSize, mid); err != nil {
 		return nil, fmt.Errorf("flac: failed to decode subframe mid, err:%w", err)
 	}
-	side, err := decodeSubframe(br, bitDepth+1, blockSize)
-	if err != nil {
+	side := dst[blockSize:]
+	if err := decodeSubframe(br, bitDepth+1, blockSize, side); err != nil {
 		return nil, fmt.Errorf("flac: failed to decode subframe side, err:%w", err)
 	}
 	// Interchannel Decorrelation: https://www.rfc-editor.org/rfc/rfc9639.html#section-4.2
@@ -417,48 +415,48 @@ func decodeMidSide(br *bitReader, bitDepth uint8, blockSize uint16) ([]int64, er
 		if side[i]&1 != 0 {
 			m += 1
 		}
-		samples[i] = (m + side[i]) >> 1
-		samples[i+int(blockSize)] = (m - side[i]) >> 1
+		dst[i] = (m + side[i]) >> 1
+		dst[i+int(blockSize)] = (m - side[i]) >> 1
 	}
-	return samples, nil
+	return dst, nil
 }
 
 func decodeLeftSide(br *bitReader, bitDepth uint8, blockSize uint16) ([]int64, error) {
 	// leftとrightの2ブロック分
-	samples := make([]int64, int(blockSize)*2)
-	left, err := decodeSubframe(br, bitDepth, blockSize)
-	if err != nil {
+	dst := make([]int64, int(blockSize)*2)
+	left := dst[:blockSize]
+	if err := decodeSubframe(br, bitDepth, blockSize, left); err != nil {
 		return nil, fmt.Errorf("flac: failed to decode subframe left, err:%w", err)
 	}
-	side, err := decodeSubframe(br, bitDepth+1, blockSize)
-	if err != nil {
+	side := dst[blockSize:]
+	if err := decodeSubframe(br, bitDepth+1, blockSize, side); err != nil {
 		return nil, fmt.Errorf("flac: failed to decode subframe side, err:%w", err)
 	}
 	// Interchannel Decorrelation: https://www.rfc-editor.org/rfc/rfc9639.html#section-4.2
 	// sideはleft - rightとして符号化されているので、right = left - sideで復元する。
 	for i := range int(blockSize) {
 		right := left[i] - side[i]
-		samples[i] = left[i]
-		samples[i+int(blockSize)] = right
+		dst[i] = left[i]
+		dst[i+int(blockSize)] = right
 	}
-	return samples, nil
+	return dst, nil
 }
 
 func decodeSideRight(br *bitReader, bitDepth uint8, blockSize uint16) ([]int64, error) {
 	// leftとrightの2ブロック分
-	samples := make([]int64, int(blockSize)*2)
-	side, err := decodeSubframe(br, bitDepth+1, blockSize)
-	if err != nil {
+	dst := make([]int64, int(blockSize)*2)
+	side := dst[:blockSize]
+	if err := decodeSubframe(br, bitDepth+1, blockSize, side); err != nil {
 		return nil, fmt.Errorf("flac: failed to decode subframe side, err:%w", err)
 	}
-	right, err := decodeSubframe(br, bitDepth, blockSize)
-	if err != nil {
+	right := dst[blockSize:]
+	if err := decodeSubframe(br, bitDepth, blockSize, right); err != nil {
 		return nil, fmt.Errorf("flac: failed to decode subframe right, err:%w", err)
 	}
 	for i := range int(blockSize) {
 		left := right[i] + side[i]
-		samples[i] = left
-		samples[i+int(blockSize)] = right[i]
+		dst[i] = left
+		dst[i+int(blockSize)] = right[i]
 	}
-	return samples, nil
+	return dst, nil
 }
