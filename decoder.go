@@ -63,6 +63,8 @@ type Decoder struct {
 	terminalErr error
 	// PCM全体のMD5ハッシュ
 	hash hash.Hash
+	// PCM変換用のバッファ
+	pcmBuf []byte
 }
 
 // NewDecoder returns a Decoder.
@@ -98,6 +100,15 @@ func (d *Decoder) Metadata() Metadata {
 // https://www.rfc-editor.org/rfc/rfc9639.html#name-streaminfo
 func (d *Decoder) StreamInfo() StreamInfo {
 	return d.meta.StreamInfo
+}
+
+func (d *Decoder) pcmBuffer(n int) []byte {
+	if cap(d.pcmBuf) < n {
+		d.pcmBuf = make([]byte, n)
+	} else {
+		d.pcmBuf = d.pcmBuf[:n]
+	}
+	return d.pcmBuf
 }
 
 // Read decodes FLAC audio and reads up to len(p) bytes of interleaved PCM into p.
@@ -150,7 +161,7 @@ func (d *Decoder) Read(p []byte) (int, error) {
 		return 0, d.terminalErr
 	}
 	// PCMに変換
-	pcm := toPCMSample(header, samples)
+	pcm := d.toPCMSample(header, samples)
 	// MD5のハッシュ計算(逐次)
 	// MD5のWriteはエラーを返さないので結果は両方捨てる
 	_, _ = d.hash.Write(pcm)
@@ -213,19 +224,21 @@ func (d *Decoder) finish() error {
 	return nil
 }
 
-func toPCMSample(h frameHeader, frame []int64) []byte {
+func (d *Decoder) toPCMSample(h frameHeader, frame []int64) []byte {
+	n := 0
 	bytesPerSample := (h.bitDepth + 7) / 8 // ビット深度をバイト位置に切り上げ
 	capacity := int(h.channel.count()) * int(h.blockSize) * int(bytesPerSample)
-	buf := make([]byte, 0, capacity)
+	dst := d.pcmBuffer(capacity)
 	for i := range h.blockSize {
 		for j := range h.channel.count() { // チャンネルを順番に処理
 			s := frame[int(j)*int(h.blockSize)+int(i)] // 各チャンネル(pannar-flat上の)の開始位置を特定
 			for k := range bytesPerSample {
 				// "下位"からビット深度分をシフトして格納
 				// 下位バイトから格納するので結果はlittle-endianになる。
-				buf = append(buf, byte(s>>(8*k)))
+				dst[n] = byte(s >> (8 * k))
+				n++
 			}
 		}
 	}
-	return buf
+	return dst
 }
