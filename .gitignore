@@ -37,3 +37,4 @@ music/
 *.wav
 mem.prof
 cpu.prof
+rfc6939.txt
