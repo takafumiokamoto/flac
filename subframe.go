@@ -136,6 +136,9 @@ func decodeVerbatim(br *bitReader, bps uint8, blockSize uint16) ([]int64, error)
 }
 
 func decodeFixed(br *bitReader, order uint8, bps uint8, blockSize uint16) ([]int64, error) {
+	if blockSize <= uint16(order) {
+		return nil, fmt.Errorf("flac: block size must be larger than prediction order: blocksize:%d, prediction order:%d", blockSize, order)
+	}
 	if order > 4 {
 		return nil, fmt.Errorf("flac: invalid prediction order:%d", order)
 	}
@@ -175,6 +178,9 @@ func decodeFixed(br *bitReader, order uint8, bps uint8, blockSize uint16) ([]int
 }
 
 func decodeLPC(br *bitReader, order uint8, bps uint8, blockSize uint16) ([]int64, error) {
+	if blockSize <= uint16(order) {
+		return nil, fmt.Errorf("flac: block size must be larger than prediction order: blocksize:%d, prediction order:%d", blockSize, order)
+	}
 	dst := make([]int64, blockSize)
 	for i := range int(order) {
 		sample, err := br.readSigned(uint(bps))
