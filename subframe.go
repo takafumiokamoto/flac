@@ -197,13 +197,13 @@ func decodeLPC(br *bitReader, order uint8, bps uint8, blockSize uint16, dst []in
 	if shift < 0 {
 		return fmt.Errorf("flac: invalid shift:%d", shift)
 	}
-	coefficients := make([]int64, 0, order)
+	var coefficients [32]int64 // orderは6bit符号のため1~32(§9.2.1)
 	for i := range order {
 		coefficient, err := br.readSigned(uint(precision))
 		if err != nil {
 			return fmt.Errorf("flac: failed to read coefficient: index:%d, err:%w", i, err)
 		}
-		coefficients = append(coefficients, coefficient)
+		coefficients[i] = coefficient
 	}
 	err = decodeResidual(br, order, blockSize, dst[order:])
 	if err != nil {
@@ -217,7 +217,7 @@ func decodeLPC(br *bitReader, order uint8, bps uint8, blockSize uint16, dst []in
 		// 実際の波は正弦波ではないが、LPCでは係数部分をサブフレームの信号ごとにエンコーダが決定する。
 		// そうすることで実際の信号とのずれを抑えることができる。
 		// 予測が当たるほどresidualが0に近づき、小さいビット数で表現できる。
-		for j, c := range coefficients {
+		for j, c := range coefficients[:order] {
 			sum += c * dst[i-1-j]
 		}
 		// 予測係数は小数点部分が左シフトされ整数になっている。
