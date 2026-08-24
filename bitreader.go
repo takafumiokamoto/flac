@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	errBitReader = errors.New("flac: failed to read bits")
+	errBitReader = errors.New("failed to read bits")
 )
 
 // bitReader reads a bit stream most significant bit first.

@@ -135,7 +135,7 @@ const (
 func (f *frameDecoder) decodeFrame() (frameHeader, []int64, error) {
 	hBuf, err := f.r.Peek(maxFrameHeaderSize)
 	if err != nil && !errors.Is(err, io.EOF) {
-		return frameHeader{}, nil, fmt.Errorf("flac: failed to read frame header: %w", err)
+		return frameHeader{}, nil, fmt.Errorf("failed to read frame header: %w", err)
 	}
 	switch {
 	case len(hBuf) == 0:
@@ -155,7 +155,7 @@ func (f *frameDecoder) decodeFrame() (frameHeader, []int64, error) {
 
 	// 実際に読んだ分だけ捨てる
 	if _, err := f.r.Discard(consumed); err != nil {
-		return frameHeader{}, nil, fmt.Errorf("flac: failed to discard consumed bytes when reading frame header:%w", err)
+		return frameHeader{}, nil, fmt.Errorf("failed to discard consumed bytes when reading frame header:%w", err)
 	}
 
 	f.br.reset(f)
@@ -178,12 +178,12 @@ func (f *frameDecoder) decodeFrame() (frameHeader, []int64, error) {
 			return frameHeader{}, nil, err
 		}
 	default:
-		return frameHeader{}, nil, fmt.Errorf("flac: invalid channel :%d", h.channel)
+		return frameHeader{}, nil, fmt.Errorf("invalid channel :%d", h.channel)
 	}
 
 	// 余りを読み込んで次のバイト境界CRC16の始まりに揃える
 	if _, err = f.br.readBits(f.br.cnt); err != nil {
-		return frameHeader{}, nil, fmt.Errorf("flac: failed to read padding bits: %w", err)
+		return frameHeader{}, nil, fmt.Errorf("failed to read padding bits: %w", err)
 	}
 
 	// CRC-16の直前までのCRC16
@@ -191,11 +191,11 @@ func (f *frameDecoder) decodeFrame() (frameHeader, []int64, error) {
 
 	fistCRC16Bits, err := f.ReadByte()
 	if err != nil {
-		return frameHeader{}, nil, fmt.Errorf("flac: faild to read first byte of CRC-16:%w", err)
+		return frameHeader{}, nil, fmt.Errorf("faild to read first byte of CRC-16:%w", err)
 	}
 	secondCRC16Bits, err := f.ReadByte()
 	if err != nil {
-		return frameHeader{}, nil, fmt.Errorf("flac: faild to read first byte of CRC-16:%w", err)
+		return frameHeader{}, nil, fmt.Errorf("faild to read first byte of CRC-16:%w", err)
 	}
 	storedCRC := uint16(fistCRC16Bits)<<8 | uint16(secondCRC16Bits)
 	// CRC16の検証
@@ -209,7 +209,7 @@ func (f *frameDecoder) decodeFrame() (frameHeader, []int64, error) {
 func readFrameHeader(b []byte, si StreamInfo) (frameHeader, int, error) {
 	// 長さは事前に呼び出し元でチェック済みではある。
 	if len(b) < 4 {
-		return frameHeader{}, 0, fmt.Errorf("flac: frame header is shorter than 4 bytes (got %d): %w", len(b), io.ErrUnexpectedEOF)
+		return frameHeader{}, 0, fmt.Errorf("frame header is shorter than 4 bytes (got %d): %w", len(b), io.ErrUnexpectedEOF)
 	}
 	// Frame Header: https://www.rfc-editor.org/rfc/rfc9639.html#section-9.1
 	// 先頭15ビットは14ビットのsync codeと、0でなければならない(MUST)予約ビット1つ。
@@ -393,7 +393,7 @@ func decodeIndependent(
 	bs := int(blockSize)
 	for i := range int(channel.count()) {
 		if err := decodeSubframe(br, bitDepth, blockSize, dst[i*bs:(i+1)*bs]); err != nil { // i番目のblockの先頭から次のblockの先頭まで
-			return fmt.Errorf("flac: failed to decode subframe %d, err:%w", i, err)
+			return fmt.Errorf("failed to decode subframe %d, err:%w", i, err)
 		}
 	}
 	return nil
@@ -402,11 +402,11 @@ func decodeIndependent(
 func decodeMidSide(br *bitReader, bitDepth uint8, blockSize uint16, dst []int64) error {
 	mid := dst[:blockSize]
 	if err := decodeSubframe(br, bitDepth, blockSize, mid); err != nil {
-		return fmt.Errorf("flac: failed to decode subframe mid, err:%w", err)
+		return fmt.Errorf("failed to decode subframe mid, err:%w", err)
 	}
 	side := dst[blockSize:]
 	if err := decodeSubframe(br, bitDepth+1, blockSize, side); err != nil {
-		return fmt.Errorf("flac: failed to decode subframe side, err:%w", err)
+		return fmt.Errorf("failed to decode subframe side, err:%w", err)
 	}
 	// Interchannel Decorrelation: https://www.rfc-editor.org/rfc/rfc9639.html#section-4.2
 	for i := range int(blockSize) {
@@ -423,11 +423,11 @@ func decodeMidSide(br *bitReader, bitDepth uint8, blockSize uint16, dst []int64)
 func decodeLeftSide(br *bitReader, bitDepth uint8, blockSize uint16, dst []int64) error {
 	left := dst[:blockSize]
 	if err := decodeSubframe(br, bitDepth, blockSize, left); err != nil {
-		return fmt.Errorf("flac: failed to decode subframe left, err:%w", err)
+		return fmt.Errorf("failed to decode subframe left, err:%w", err)
 	}
 	side := dst[blockSize:]
 	if err := decodeSubframe(br, bitDepth+1, blockSize, side); err != nil {
-		return fmt.Errorf("flac: failed to decode subframe side, err:%w", err)
+		return fmt.Errorf("failed to decode subframe side, err:%w", err)
 	}
 	// Interchannel Decorrelation: https://www.rfc-editor.org/rfc/rfc9639.html#section-4.2
 	// sideはleft - rightとして符号化されているので、right = left - sideで復元する。
@@ -442,11 +442,11 @@ func decodeLeftSide(br *bitReader, bitDepth uint8, blockSize uint16, dst []int64
 func decodeSideRight(br *bitReader, bitDepth uint8, blockSize uint16, dst []int64) error {
 	side := dst[:blockSize]
 	if err := decodeSubframe(br, bitDepth+1, blockSize, side); err != nil {
-		return fmt.Errorf("flac: failed to decode subframe side, err:%w", err)
+		return fmt.Errorf("failed to decode subframe side, err:%w", err)
 	}
 	right := dst[blockSize:]
 	if err := decodeSubframe(br, bitDepth, blockSize, right); err != nil {
-		return fmt.Errorf("flac: failed to decode subframe right, err:%w", err)
+		return fmt.Errorf("failed to decode subframe right, err:%w", err)
 	}
 	for i := range int(blockSize) {
 		left := right[i] + side[i]
