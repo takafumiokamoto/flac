@@ -139,50 +139,49 @@ func decodeFixed(br *bitReader, order uint8, bps uint8, blockSize uint16) ([]int
 	if order > 4 {
 		return nil, fmt.Errorf("flac: invalid prediction order:%d", order)
 	}
-	samples := make([]int64, 0, blockSize)
-	for range order {
+	dst := make([]int64, blockSize)
+	for i := range int(order) {
 		sample, err := br.readSigned(uint(bps))
 		if err != nil {
 			return nil, fmt.Errorf("flac: failed to read warm up samples: %w", err)
 		}
-		samples = append(samples, sample)
+		dst[i] = sample
 	}
-	residuals, err := decodeResidual(br, order, blockSize)
+	err := decodeResidual(br, order, blockSize, dst[order:])
 	if err != nil {
 		return nil, fmt.Errorf("flac: failed to read residuals:%w", err)
 	}
-	for _, r := range residuals {
-		n := len(samples)
+	for i := int(order); i < len(dst); i++ {
 		var prediction int64
 		switch order {
 		case 0:
 			prediction = 0
 		case 1:
 			// a(n-1)
-			prediction = samples[n-1]
+			prediction = dst[i-1]
 		case 2:
 			// 2 * a(n-1) - a(n-2)
-			prediction = 2*samples[n-1] - samples[n-2]
+			prediction = 2*dst[i-1] - dst[i-2]
 		case 3:
 			// 3 * a(n-1) - 3 * a(n-2) + a(n-3)
-			prediction = 3*samples[n-1] - 3*samples[n-2] + samples[n-3]
+			prediction = 3*dst[i-1] - 3*dst[i-2] + dst[i-3]
 		case 4:
 			// 4 * a(n-1) - 6 * a(n-2) + 4 * a(n-3) - a(n-4)
-			prediction = 4*samples[n-1] - 6*samples[n-2] + 4*samples[n-3] - samples[n-4]
+			prediction = 4*dst[i-1] - 6*dst[i-2] + 4*dst[i-3] - dst[i-4]
 		}
-		samples = append(samples, prediction+r)
+		dst[i] = prediction + dst[i]
 	}
-	return samples, nil
+	return dst, nil
 }
 
 func decodeLPC(br *bitReader, order uint8, bps uint8, blockSize uint16) ([]int64, error) {
-	samples := make([]int64, 0, blockSize)
-	for range order {
+	dst := make([]int64, blockSize)
+	for i := range int(order) {
 		sample, err := br.readSigned(uint(bps))
 		if err != nil {
 			return nil, fmt.Errorf("flac: failed to read warm up samples: %w", err)
 		}
-		samples = append(samples, sample)
+		dst[i] = sample
 	}
 	precision, err := br.readBits(4)
 	if err != nil {
@@ -207,12 +206,11 @@ func decodeLPC(br *bitReader, order uint8, bps uint8, blockSize uint16) ([]int64
 		}
 		coefficients = append(coefficients, coefficient)
 	}
-	residuals, err := decodeResidual(br, order, blockSize)
+	err = decodeResidual(br, order, blockSize, dst[order:])
 	if err != nil {
 		return nil, fmt.Errorf("flac: failed to read residuals:%w", err)
 	}
-	for _, r := range residuals {
-		n := len(samples)
+	for i := int(order); i < len(dst); i++ {
 		// 論理シフトすると左に0が入って巨大な整数になってしまう。
 		// 明示的に算術シフトをするためにint64
 		var sum int64 = 0
@@ -220,21 +218,21 @@ func decodeLPC(br *bitReader, order uint8, bps uint8, blockSize uint16) ([]int64
 		// 実際の波は正弦波ではないが、LPCでは係数部分をサブフレームの信号ごとにエンコーダが決定する。
 		// そうすることで実際の信号とのずれを抑えることができる。
 		// 予測が当たるほどresidualが0に近づき、小さいビット数で表現できる。
-		for i, c := range coefficients {
-			sum += c * samples[n-1-i]
+		for j, c := range coefficients {
+			sum += c * dst[i-1-j]
 		}
 		// 予測係数は小数点部分が左シフトされ整数になっている。
 		// ここではシフト分を戻してからresidualを足す。
-		samples = append(samples, (sum>>shift)+r)
+		dst[i] = (sum >> shift) + dst[i]
 	}
-	return samples, nil
+	return dst, nil
 }
 
-func decodeResidual(br *bitReader, predictorOrder uint8, blockSize uint16) ([]int64, error) {
+func decodeResidual(br *bitReader, predictorOrder uint8, blockSize uint16, dst []int64) error {
 	// codingMethodは各パーティションのRICEパラメータのbit数を表す
 	codingMethod, err := br.readBits(2)
 	if err != nil {
-		return nil, fmt.Errorf("flac: failed to read coding method in coded residual: %w", err)
+		return fmt.Errorf("flac: failed to read coding method in coded residual: %w", err)
 	}
 	var riceBits uint
 	var escape uint8
@@ -248,13 +246,13 @@ func decodeResidual(br *bitReader, predictorOrder uint8, blockSize uint16) ([]in
 		riceBits = 5
 		escape = 0b11111
 	default:
-		return nil, fmt.Errorf("flac: invalid coding method in coded residual:%b", codingMethod)
+		return fmt.Errorf("flac: invalid coding method in coded residual:%b", codingMethod)
 	}
 
 	// partitionOrderはパーティション数の元になる数
 	partitionOrder, err := br.readBits(4)
 	if err != nil {
-		return nil, fmt.Errorf("flac: failed to read partition order: %w", err)
+		return fmt.Errorf("flac: failed to read partition order: %w", err)
 	}
 
 	// パーティション数は2 ^ partition orderで求まる。partition orderが3の場合は2 ^ 3 = 8 partitions
@@ -264,14 +262,14 @@ func decodeResidual(br *bitReader, predictorOrder uint8, blockSize uint16) ([]in
 	partitionSize := blockSize >> partitionOrder
 
 	if int(blockSize)%partitionCount != 0 {
-		return nil, fmt.Errorf("flac: invalid partiion order, block size should be divisible by partition count, partiion order:%b, blocksize:%b", partitionOrder, blockSize)
+		return fmt.Errorf("flac: invalid partiion order, block size should be divisible by partition count, partiion order:%b, blocksize:%b", partitionOrder, blockSize)
 	}
 
 	if uint64(partitionSize) <= uint64(predictorOrder) {
-		return nil, fmt.Errorf("flac: partition order should be smaller than partition size, partiion order:%b, partition size:%b", partitionOrder, partitionSize)
+		return fmt.Errorf("flac: partition order should be smaller than partition size, partiion order:%b, partition size:%b", partitionOrder, partitionSize)
 	}
 
-	residuals := make([]int64, 0, partitionCount*int(partitionSize))
+	n := 0
 	for i := range partitionCount {
 		residualCount := partitionSize
 		if i == 0 {
@@ -283,22 +281,23 @@ func decodeResidual(br *bitReader, predictorOrder uint8, blockSize uint16) ([]in
 		}
 		riceParam, err := br.readBits(riceBits)
 		if err != nil {
-			return nil, fmt.Errorf("flac: failed to read rice parameter: %w", err)
+			return fmt.Errorf("flac: failed to read rice parameter: %w", err)
 		}
 		if riceParam == uint64(escape) {
 			// 取得したRICE符号がescapeシーケンスと一致している場合はRICE符号として扱わない。
 			// escapeの場合は次の5bitに残差の幅が記載されている
 			residualWidth, err := br.readBits(5)
 			if err != nil {
-				return nil, fmt.Errorf("flac: failed to read residual witdth (escape sequeence path), partition index:%d, err%w", i, err)
+				return fmt.Errorf("flac: failed to read residual witdth (escape sequeence path), partition index:%d, err%w", i, err)
 			}
 			// このパーティションの残りは生の残差として扱う。
 			for j := range residualCount {
 				residual, err := br.readSigned(uint(residualWidth))
 				if err != nil {
-					return nil, fmt.Errorf("flac: failed to read residual (escape sequeence path), partition index:%d, residual index:%d, err%w", i, j, err)
+					return fmt.Errorf("flac: failed to read residual (escape sequeence path), partition index:%d, residual index:%d, err%w", i, j, err)
 				}
-				residuals = append(residuals, int64(residual))
+				dst[n] = int64(residual)
+				n++
 			}
 			continue
 		}
@@ -306,12 +305,12 @@ func decodeResidual(br *bitReader, predictorOrder uint8, blockSize uint16) ([]in
 			// 商
 			quotient, err := br.readUnary()
 			if err != nil {
-				return nil, fmt.Errorf("flac: failed to read quotient, partition index:%d, residual index:%d, err%w", i, j, err)
+				return fmt.Errorf("flac: failed to read quotient, partition index:%d, residual index:%d, err%w", i, j, err)
 			}
 			// 余り
 			remainder, err := br.readBits(uint(riceParam))
 			if err != nil {
-				return nil, fmt.Errorf("flac: failed to read remainder, partition index:%d, residual index:%d, err%w", i, j, err)
+				return fmt.Errorf("flac: failed to read remainder, partition index:%d, residual index:%d, err%w", i, j, err)
 			}
 			// 商と余りを連結。riceParamとremainderは桁数が一致している
 			folded := (quotient << riceParam) | remainder
@@ -338,8 +337,9 @@ func decodeResidual(br *bitReader, predictorOrder uint8, blockSize uint16) ([]in
 				// 答えが-13になり手計算と一致する。
 				residual = ^int64(folded >> 1)
 			}
-			residuals = append(residuals, residual)
+			dst[n] = residual
+			n++
 		}
 	}
-	return residuals, nil
+	return nil
 }

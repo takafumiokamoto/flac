@@ -110,7 +110,8 @@ func TestDecodeResidual(t *testing.T) {
 					t.Fatalf("decodeResidual() failed to discard skip bits:%v", err)
 				}
 			}
-			got, err := decodeResidual(br, tt.order, tt.blocksize)
+			got := make([]int64, int(tt.blocksize)-int(tt.order))
+			err := decodeResidual(br, tt.order, tt.blocksize, got[:])
 			if err != nil {
 				t.Fatalf("decodeResidual() failed to discard skip bits:%v", err)
 			}
