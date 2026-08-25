@@ -150,6 +150,14 @@ func (f *frameDecoder) decodeFrame() (frameHeader, []int64, error) {
 	if err != nil {
 		return frameHeader{}, nil, err
 	}
+	// streaminfoのmaximum blocksizeを超えていないか検証
+	// https://www.rfc-editor.org/rfc/rfc9639.html#name-streaminfo
+	if f.si.MaxBlockSize < h.blockSize {
+		return frameHeader{}, nil,
+			fmt.Errorf(
+				"%w: block size in frame header must not exceed max block size in stream info: blocksize:%d, max block size:%d",
+				ErrStreamInfoMismatch, h.blockSize, f.si.MaxBlockSize)
+	}
 	// frameのCRC16の逐次計算
 	f.resetCRC16(hBuf[:consumed])
 
@@ -202,7 +210,6 @@ func (f *frameDecoder) decodeFrame() (frameHeader, []int64, error) {
 	if storedCRC != wantCRC16 {
 		return frameHeader{}, nil, fmt.Errorf("%w: CRC-16 does not match: stored:%02x, got:%02x", errCRC, storedCRC, wantCRC16)
 	}
-
 	return h, dst, nil
 }
 

@@ -31,6 +31,12 @@ var (
 	// ErrMD5 is returned when the decoded samples do not match the MD5
 	// checksum stored in the streaminfo metadata block (Section 8.2).
 	ErrMD5 = errors.New("flac: MD5 sum does not match")
+
+	// ErrStreamInfoMismatch is returned when the frame header has
+	// mismatched value with stream info.
+	// Currently the decoder checks if block size in frame header
+	// exceeds max block size in streaminfo.
+	ErrStreamInfoMismatch = errors.New("flac: mismatch stream info")
 )
 
 // Metadata holds the metadata of a FLAC stream.
