@@ -1,6 +1,54 @@
 # flac
 
-A pure Go FLAC ([RFC 9639](https://rfc-editor.org/rfc/rfc9639)) decoder with zero dependencies.
+A pure Go FLAC ([RFC 9639](https://rfc-editor.org/rfc/rfc9639)) decoder with zero dependencies and it's FAST.
+
+## It's FAST.
+
+**1.5× faster, with 1/29 the memory and 1/90 the allocations**, compared to [mewkiz/flac@v1.0.14](https://github.com/mewkiz/flac).
+
+The benchmark decodes `flac-test-files/subset/01 - blocksize 4096.flac` end to end.  
+Both decoders do: decode every frame, verify the frame header CRC-8 and frame footer CRC-16, and verify the MD5 of the decoded PCM.  
+Additionally, this decoder writes the interleaved PCM to the caller's buffer.
+
+```text
+goos: darwin
+goarch: arm64
+pkg: github.com/takafumiokamoto/flac/benchmark
+cpu: Apple M5
+          │  bench.log  │
+          │   sec/op    │
+This-10     11.56m ± 1%
+Mewkiz-10   17.64m ± 0%
+geomean     14.28m
+
+          │  bench.log   │
+          │     B/s      │
+This-10     45.37Mi ± 1%
+Mewkiz-10   29.74Mi ± 0%
+geomean     36.73Mi
+
+          │  bench.log   │
+          │     B/op     │
+This-10     84.93Ki ± 0%
+Mewkiz-10   2.421Mi ± 0%
+geomean     458.8Ki
+
+          │  bench.log  │
+          │  allocs/op  │
+This-10      18.00 ± 0%
+Mewkiz-10   1.620k ± 0%
+geomean      170.8
+```
+
+### Reproduce
+
+```shell
+go install golang.org/x/perf/cmd/benchstat@latest
+git clone --recurse-submodules https://github.com/takafumiokamoto/flac
+cd flac/benchmark
+go test -run='^$' -bench=. -benchmem -count=10 > bench.log
+benchstat bench.log
+```
 
 ## Usage
 

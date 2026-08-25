@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/bits"
 )
 
 var (
@@ -77,15 +78,24 @@ func (br *bitReader) readSigned(n uint) (int64, error) {
 }
 
 func (br *bitReader) readUnary() (uint64, error) {
-	var unary int = 0
+	var unary uint64 = 0
 	for {
-		b, err := br.readBits(1)
-		if err != nil {
-			return 0, err
+		if br.cnt == 0 {
+			if err := br.fill(1); err != nil {
+				return 0, err
+			}
 		}
-		if b == 1 {
-			return uint64(unary), nil
+		lz := uint(bits.LeadingZeros64(br.acc))
+		if lz < br.cnt {
+			// 終端ビットがbr.accの中に存在する。
+			// 末尾1も含めてunaryなので + 1
+			br.acc <<= lz + 1
+			// cntは有効ビット数なのでlz+1を引く
+			br.cnt -= lz + 1
+			return unary + uint64(lz), nil
 		}
-		unary++
+		// 全て0なので、次のバイト取り込みを行う
+		unary += uint64(br.cnt)
+		br.cnt = 0 // 次を取り込むので、0にする
 	}
 }

@@ -9,6 +9,18 @@ const (
 	poly16 uint16 = 0x8005
 )
 
+var crc16Table [256]uint16 = makeCRC16Table()
+
+func makeCRC16Table() [256]uint16 {
+	// crc16の事前計算
+	// CRCは8bitずつ計算するので、2^8 = 256通りを先に計算しておく。
+	var tb [256]uint16
+	for i := range tb {
+		tb[i] = crc16UpdateBit(0, byte(i))
+	}
+	return tb
+}
+
 // crc8 computes the CRC-8.
 // polynomial is x^8 + x^2 + x^1 + x^0, initialized with 0.
 //
@@ -48,7 +60,7 @@ func crc16(src []byte) uint16 {
 	return crc
 }
 
-func crc16Update(crc uint16, b byte) uint16 {
+func crc16UpdateBit(crc uint16, b byte) uint16 {
 	// 次のバイトを取り込む。crc が 16 ビット幅なので、上位バイトに載せてから XOR する。
 	crc ^= uint16(b) << 8
 	// 以下は crc8 と同じ筆算。判定する最上位ビットが 0x8000 になる。
@@ -60,4 +72,22 @@ func crc16Update(crc uint16, b byte) uint16 {
 		}
 	}
 	return crc
+}
+
+func crc16Update(crc uint16, b byte) uint16 {
+	// crc16UpdateBitの
+	//for range 8 {
+	//		if crc&0x8000 != 0 {
+	//			crc = crc<<1 ^ poly16
+	//		} else {
+	//			crc <<= 1
+	//		}
+	//	}
+	// の部分を事前計算してテーブルから引いている
+	//
+	// このループに入る前は
+	// crc ^= uint16(b) << 8
+	// をしているが、ここではcrc16Tableが上位8ビット分は事前に計算して配列に格納している。
+	// ここでは上位8bitをシフト降ろしてから上記と同じようにXORをしてテーブルから引く
+	return crc<<8 ^ crc16Table[byte(crc>>8)^b]
 }
