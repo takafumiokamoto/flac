@@ -29,18 +29,18 @@ func TestReadSubFrameHeader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			br := newBitReader(bytes.NewReader(tt.in))
 			got, err := readSubFrameHeader(br)
-			if !tt.want.err && err != nil {
+			if !tt.err && err != nil {
 				t.Fatalf("readSubFrameHeader() unexpected error: %v", err)
 			}
-			if tt.want.err {
+			if tt.err {
 				if err == nil {
 					t.Fatal("readSubFrameHeader() expected an error, got none")
 				}
 				t.Logf("expected err:%v", err)
 				return
 			}
-			if got != tt.want.header {
-				t.Errorf("readSubFrameHeader(), want:%+v, got:%+v", tt.want.header, got)
+			if got != tt.header {
+				t.Errorf("readSubFrameHeader(), want:%+v, got:%+v", tt.header, got)
 			}
 		})
 	}

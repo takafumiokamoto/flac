@@ -28,7 +28,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to open file:%w", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	pcm, err := flac.Decode(f)
 	if err != nil {
@@ -45,7 +47,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to create WAV file:%w", err)
 	}
-	defer out.Close()
+	defer func() {
+		_ = out.Close()
+	}()
 	_, err = out.Write(wav)
 	if err != nil {
 		return fmt.Errorf("failed to write WAV file:%w", err)

@@ -212,7 +212,7 @@ func (d *Decoder) copyPending(p []byte) int {
 }
 
 func (d *Decoder) finish() error {
-	wantMD5Sum := d.meta.StreamInfo.MD5Sum
+	wantMD5Sum := d.meta.MD5Sum
 	if wantMD5Sum == [16]byte{} {
 		// stream infoにMD5が設定されていなければMD5のチェックをしない
 		return nil
