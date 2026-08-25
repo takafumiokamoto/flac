@@ -19,7 +19,7 @@ func TestDecodeCodedNumber(t *testing.T) {
 		{"first byte doesn't end with 0", []byte{0xF7, 0xFF}, want{0, 0, true}},
 		{"second byte doesn't start with 0b10", []byte{0xC0, 0xFF}, want{0, 0, true}},
 		{"1 bytes data", []byte{0x7F}, want{0b1111111, 1, false}},
-		{"2 bytes data", []byte{0xC0, 0xBF}, want{0b111111, 2, false}},
+		{"2 bytes data", []byte{0xDF, 0xBF}, want{0b11111111111, 2, false}},
 		{"3 bytes data", []byte{0xE0, 0xBF, 0xBF}, want{0b111111111111, 3, false}},
 		{"4 bytes data", []byte{0xF0, 0xBF, 0xBF, 0xBF}, want{0b111111111111111111, 4, false}},
 		{"5 bytes data", []byte{0xF8, 0xBF, 0xBF, 0xBF, 0xBF}, want{0b111111111111111111111111, 5, false}},
