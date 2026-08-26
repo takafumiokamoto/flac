@@ -113,7 +113,7 @@ const streamInfoLength = 34
 func readStreamInfo(r io.Reader) (StreamInfo, error) {
 	var buf = [streamInfoLength]byte{}
 	if err := readFull(r, buf[:]); err != nil {
-		return StreamInfo{}, fmt.Errorf("failed to read Streaminfo: %w", err)
+		return StreamInfo{}, fmt.Errorf("failed to read streaminfo: %w", err)
 	}
 	minBlockSize := uint16(buf[0])<<8 | uint16(buf[1])
 	maxBlockSize := uint16(buf[2])<<8 | uint16(buf[3])

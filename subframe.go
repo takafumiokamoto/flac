@@ -26,28 +26,28 @@ func decodeSubframe(br *bitReader, bps uint8, blockSize uint16, dst []int64) err
 	}
 	h, err := readSubFrameHeader(br)
 	if err != nil {
-		return fmt.Errorf("failed to read subframe header:%w", err)
+		return fmt.Errorf("failed to read subframe header: %w", err)
 	}
 	if h.wastedBits >= uint64(bps) {
-		return fmt.Errorf("wasted bits must be smaller than bits per sample, wasted bits:%d, bit per sample:%d", h.wastedBits, bps)
+		return fmt.Errorf("wasted bits must be smaller than bits per sample, wasted bits:%d, bits per sample:%d", h.wastedBits, bps)
 	}
 	bps -= uint8(h.wastedBits)
 	switch h.typ {
 	case subframeConstant:
 		if err := decodeConstant(br, bps, blockSize, dst[:]); err != nil {
-			return fmt.Errorf("failed to decode constant subframe:%w", err)
+			return fmt.Errorf("failed to decode constant subframe: %w", err)
 		}
 	case subframeVerbatim:
 		if err := decodeVerbatim(br, bps, blockSize, dst[:]); err != nil {
-			return fmt.Errorf("failed to decode verbatim subframe:%w", err)
+			return fmt.Errorf("failed to decode verbatim subframe: %w", err)
 		}
 	case subframeFixed:
 		if err := decodeFixed(br, h.predictorOrder, bps, blockSize, dst[:]); err != nil {
-			return fmt.Errorf("failed to decode fixed predictor subframe:%w", err)
+			return fmt.Errorf("failed to decode fixed predictor subframe: %w", err)
 		}
 	case subframeLPC:
 		if err := decodeLPC(br, h.predictorOrder, bps, blockSize, dst[:]); err != nil {
-			return fmt.Errorf("failed to decode linear predictor subframe:%w", err)
+			return fmt.Errorf("failed to decode linear predictor subframe: %w", err)
 		}
 	default:
 		return fmt.Errorf("invalid subframe type:%d", h.typ)
@@ -62,16 +62,16 @@ func readSubFrameHeader(br *bitReader) (subframeHeader, error) {
 
 	firstBit, err := br.readBits(1)
 	if err != nil {
-		return subframeHeader{}, fmt.Errorf("failed to read Subframe Header: %w", err)
+		return subframeHeader{}, fmt.Errorf("failed to read subframe header: %w", err)
 	}
 	if firstBit == 1 {
-		return subframeHeader{}, errors.New("first bit of Subframe Header must be 0")
+		return subframeHeader{}, errors.New("first bit of subframe header must be 0")
 	}
 	sbf := subframeHeader{}
 
 	typ, err := br.readBits(6)
 	if err != nil {
-		return subframeHeader{}, fmt.Errorf("failed to read Subframe Header: %w", err)
+		return subframeHeader{}, fmt.Errorf("failed to read subframe header: %w", err)
 	}
 
 	switch v := typ; {
@@ -80,12 +80,12 @@ func readSubFrameHeader(br *bitReader) (subframeHeader, error) {
 	case v == 0b000001:
 		sbf.typ = subframeVerbatim
 	case 0b000010 <= v && v <= 0b000111:
-		return subframeHeader{}, fmt.Errorf("invalid subframe type [Reserved]: %b", v)
+		return subframeHeader{}, fmt.Errorf("invalid subframe type (reserved):%b", v)
 	case 0b001000 <= v && v <= 0b001100:
 		sbf.typ = subframeFixed
 		sbf.predictorOrder = uint8(v) - 8
 	case 0b001101 <= v && v <= 0b011111:
-		return subframeHeader{}, fmt.Errorf("invalid subframe type [Reserved]: %b", v)
+		return subframeHeader{}, fmt.Errorf("invalid subframe type (reserved):%b", v)
 	case 0b100000 <= v && v <= 0b111111:
 		sbf.typ = subframeLPC
 		sbf.predictorOrder = uint8(v) - 31
@@ -111,7 +111,7 @@ func readSubFrameHeader(br *bitReader) (subframeHeader, error) {
 func decodeConstant(br *bitReader, bps uint8, blockSize uint16, dst []int64) error {
 	s, err := br.readSigned(uint(bps))
 	if err != nil {
-		return fmt.Errorf("failed to read constant subframe:%w", err)
+		return fmt.Errorf("failed to read constant subframe: %w", err)
 	}
 	for i := range blockSize {
 		dst[i] = s
@@ -123,7 +123,7 @@ func decodeVerbatim(br *bitReader, bps uint8, blockSize uint16, dst []int64) err
 	for i := range blockSize {
 		s, err := br.readSigned(uint(bps))
 		if err != nil {
-			return fmt.Errorf("failed to read verbatim subframe:%w", err)
+			return fmt.Errorf("failed to read verbatim subframe: %w", err)
 		}
 		dst[i] = s
 	}
@@ -132,7 +132,7 @@ func decodeVerbatim(br *bitReader, bps uint8, blockSize uint16, dst []int64) err
 
 func decodeFixed(br *bitReader, order uint8, bps uint8, blockSize uint16, dst []int64) error {
 	if blockSize <= uint16(order) {
-		return fmt.Errorf("block size must be larger than prediction order: blocksize:%d, prediction order:%d", blockSize, order)
+		return fmt.Errorf("block size must be larger than prediction order: block size:%d, prediction order:%d", blockSize, order)
 	}
 	if order > 4 {
 		return fmt.Errorf("invalid prediction order:%d", order)
@@ -146,7 +146,7 @@ func decodeFixed(br *bitReader, order uint8, bps uint8, blockSize uint16, dst []
 	}
 	err := decodeResidual(br, order, blockSize, dst[order:])
 	if err != nil {
-		return fmt.Errorf("failed to read residuals:%w", err)
+		return fmt.Errorf("failed to read residuals: %w", err)
 	}
 	for i := int(order); i < len(dst); i++ {
 		var prediction int64
@@ -173,7 +173,7 @@ func decodeFixed(br *bitReader, order uint8, bps uint8, blockSize uint16, dst []
 
 func decodeLPC(br *bitReader, order uint8, bps uint8, blockSize uint16, dst []int64) error {
 	if blockSize <= uint16(order) {
-		return fmt.Errorf("block size must be larger than prediction order: blocksize:%d, prediction order:%d", blockSize, order)
+		return fmt.Errorf("block size must be larger than prediction order: block size:%d, prediction order:%d", blockSize, order)
 	}
 	for i := range int(order) {
 		sample, err := br.readSigned(uint(bps))
@@ -201,13 +201,13 @@ func decodeLPC(br *bitReader, order uint8, bps uint8, blockSize uint16, dst []in
 	for i := range order {
 		coefficient, err := br.readSigned(uint(precision))
 		if err != nil {
-			return fmt.Errorf("failed to read coefficient: index:%d, err:%w", i, err)
+			return fmt.Errorf("failed to read coefficient, index:%d: %w", i, err)
 		}
 		coefficients[i] = coefficient
 	}
 	err = decodeResidual(br, order, blockSize, dst[order:])
 	if err != nil {
-		return fmt.Errorf("failed to read residuals:%w", err)
+		return fmt.Errorf("failed to read residuals: %w", err)
 	}
 	for i := int(order); i < len(dst); i++ {
 		// 論理シフトすると左に0が入って巨大な整数になってしまう。
@@ -261,7 +261,7 @@ func decodeResidual(br *bitReader, predictorOrder uint8, blockSize uint16, dst [
 	partitionSize := blockSize >> partitionOrder
 
 	if int(blockSize)%partitionCount != 0 {
-		return fmt.Errorf("invalid partition order, block size should be divisible by partition count, partition order:%b, blocksize:%b", partitionOrder, blockSize)
+		return fmt.Errorf("invalid partition order, block size should be divisible by partition count, partition order:%b, block size:%b", partitionOrder, blockSize)
 	}
 
 	if uint64(partitionSize) <= uint64(predictorOrder) {
@@ -287,13 +287,13 @@ func decodeResidual(br *bitReader, predictorOrder uint8, blockSize uint16, dst [
 			// escapeの場合は次の5bitに残差の幅が記載されている
 			residualWidth, err := br.readBits(5)
 			if err != nil {
-				return fmt.Errorf("failed to read residual width (escape sequence path), partition index:%d, err:%w", i, err)
+				return fmt.Errorf("failed to read residual width (escape sequence path), partition index:%d: %w", i, err)
 			}
 			// このパーティションの残りは生の残差として扱う。
 			for j := range residualCount {
 				residual, err := br.readSigned(uint(residualWidth))
 				if err != nil {
-					return fmt.Errorf("failed to read residual (escape sequence path), partition index:%d, residual index:%d, err:%w", i, j, err)
+					return fmt.Errorf("failed to read residual (escape sequence path), partition index:%d, residual index:%d: %w", i, j, err)
 				}
 				dst[n] = int64(residual)
 				n++
@@ -304,12 +304,12 @@ func decodeResidual(br *bitReader, predictorOrder uint8, blockSize uint16, dst [
 			// 商
 			quotient, err := br.readUnary()
 			if err != nil {
-				return fmt.Errorf("failed to read quotient, partition index:%d, residual index:%d, err:%w", i, j, err)
+				return fmt.Errorf("failed to read quotient, partition index:%d, residual index:%d: %w", i, j, err)
 			}
 			// 余り
 			remainder, err := br.readBits(uint(riceParam))
 			if err != nil {
-				return fmt.Errorf("failed to read remainder, partition index:%d, residual index:%d, err:%w", i, j, err)
+				return fmt.Errorf("failed to read remainder, partition index:%d, residual index:%d: %w", i, j, err)
 			}
 			// 商と余りを連結。riceParamとremainderは桁数が一致している
 			folded := (quotient << riceParam) | remainder

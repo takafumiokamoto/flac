@@ -16,7 +16,7 @@ func TestDecoderSubset(t *testing.T) {
 		t.Fatalf("missing subset files, want:%d, got:%d", fileCount, len(files))
 	}
 	if err != nil {
-		t.Fatalf("failed to glob flac files:%v", err)
+		t.Fatalf("failed to glob flac files: %v", err)
 	}
 	for _, fileName := range files {
 		t.Run(fileName, func(t *testing.T) {
@@ -34,7 +34,7 @@ func TestDecoderFaulty(t *testing.T) {
 		t.Fatalf("missing faulty files, want:%d, got:%d", fileCount, len(files))
 	}
 	if err != nil {
-		t.Fatalf("failed to glob flac files:%v", err)
+		t.Fatalf("failed to glob flac files: %v", err)
 	}
 	for _, fileName := range files {
 		t.Run(fileName, func(t *testing.T) {
@@ -52,7 +52,7 @@ func TestDecoderUncommon(t *testing.T) {
 		t.Fatalf("missing uncommon files, want:%d, got:%d", fileCount, len(files))
 	}
 	if err != nil {
-		t.Fatalf("failed to glob flac files:%v", err)
+		t.Fatalf("failed to glob flac files: %v", err)
 	}
 	for _, fileName := range files {
 		t.Run(fileName, func(t *testing.T) {
@@ -69,7 +69,7 @@ func run(t *testing.T, fileName string, failOnErr bool) {
 	t.Helper()
 	f, err := os.Open(fileName)
 	if err != nil {
-		t.Fatalf("failed to read :%s, err:%v", fileName, err)
+		t.Fatalf("failed to read %s, err:%v", fileName, err)
 	}
 	defer func() {
 		_ = f.Close()
@@ -77,7 +77,7 @@ func run(t *testing.T, fileName string, failOnErr bool) {
 	dec, err := flac.NewDecoder(f)
 	if err != nil {
 		if failOnErr {
-			t.Errorf("test bench failed on decoding metadata: file name:%s, err :%v", fileName, err)
+			t.Errorf("test bench failed on decoding metadata: file name:%s, err:%v", fileName, err)
 			return
 		}
 		t.Logf("decoder rejects %s in metadata, err:%v", fileName, err)
@@ -86,9 +86,9 @@ func run(t *testing.T, fileName string, failOnErr bool) {
 	_, err = io.Copy(io.Discard, dec)
 	if err != nil {
 		if failOnErr {
-			t.Errorf("test bench failed: file name:%s, err :%v", fileName, err)
+			t.Errorf("test bench failed: file name:%s, err:%v", fileName, err)
 			return
 		}
-		t.Logf("decoder rejects :%s on decoding, err:%v", fileName, err)
+		t.Logf("decoder rejects %s on decoding, err:%v", fileName, err)
 	}
 }

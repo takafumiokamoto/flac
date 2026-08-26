@@ -26,7 +26,7 @@ func run() error {
 	inputFilePath := os.Args[1]
 	f, err := os.Open(inputFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to open file:%w", err)
+		return fmt.Errorf("failed to open file: %w", err)
 	}
 	defer func() {
 		_ = f.Close()
@@ -34,7 +34,7 @@ func run() error {
 
 	pcm, err := flac.Decode(f)
 	if err != nil {
-		return fmt.Errorf("deocde error err:%w", err)
+		return fmt.Errorf("deocde error: %w", err)
 	}
 
 	wav, err := toWAV(*pcm)
@@ -45,14 +45,14 @@ func run() error {
 	outPath := "./" + name + ".wav"
 	out, err := os.Create(outPath)
 	if err != nil {
-		return fmt.Errorf("failed to create WAV file:%w", err)
+		return fmt.Errorf("failed to create WAV file: %w", err)
 	}
 	defer func() {
 		_ = out.Close()
 	}()
 	_, err = out.Write(wav)
 	if err != nil {
-		return fmt.Errorf("failed to write WAV file:%w", err)
+		return fmt.Errorf("failed to write WAV file: %w", err)
 	}
 	fmt.Printf("output .wav file in: %s\n", outPath)
 	return nil

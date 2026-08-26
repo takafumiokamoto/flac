@@ -39,7 +39,7 @@ func (br *bitReader) fill(n uint) error {
 		b, err := br.r.ReadByte()
 		if err != nil {
 			if errors.Is(err, io.EOF) && br.cnt > 0 {
-				return fmt.Errorf("%w: needed:[%d] bits but only [%d] bits are available. %w", errBitReader, n, br.cnt, io.ErrUnexpectedEOF)
+				return fmt.Errorf("%w: needed %d bits but only %d bits are available: %w", errBitReader, n, br.cnt, io.ErrUnexpectedEOF)
 			}
 			return err
 		}

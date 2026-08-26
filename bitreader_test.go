@@ -138,10 +138,10 @@ func TestReadSigned(t *testing.T) {
 	var want int64 = -1
 	got, err := br.readSigned(3)
 	if err != nil {
-		t.Fatalf("readSigned() err%v", err)
+		t.Fatalf("readSigned() err:%v", err)
 	}
 	if want != got {
-		t.Fatalf("readSigned() want%d, got%d", want, got)
+		t.Fatalf("readSigned() want:%d, got:%d", want, got)
 	}
 }
 

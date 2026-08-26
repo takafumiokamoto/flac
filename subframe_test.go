@@ -107,13 +107,13 @@ func TestDecodeResidual(t *testing.T) {
 			for range tt.skip {
 				_, err := br.readBits(1)
 				if err != nil {
-					t.Fatalf("decodeResidual() failed to discard skip bits:%v", err)
+					t.Fatalf("decodeResidual() failed to discard skip bits: %v", err)
 				}
 			}
 			got := make([]int64, int(tt.blocksize)-int(tt.order))
 			err := decodeResidual(br, tt.order, tt.blocksize, got[:])
 			if err != nil {
-				t.Fatalf("decodeResidual() failed to discard skip bits:%v", err)
+				t.Fatalf("decodeResidual() failed to discard skip bits: %v", err)
 			}
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("decodeResidual() want:%v, got:%v", tt.want, got)
@@ -131,7 +131,7 @@ func mustBinDump(t *testing.T, dump string) []byte {
 		}
 		bin, err := strconv.ParseUint(tok, 2, 8)
 		if err != nil {
-			t.Fatalf("failed to convert hex dump: tok:%s, %v", tok, err)
+			t.Fatalf("failed to convert hex dump: tok:%s, err:%v", tok, err)
 		}
 		out = append(out, byte(bin))
 	}
