@@ -1,3 +1,5 @@
+![Go](https://img.shields.io/badge/go-%2300ADD8.svg?style=Plastic&logo=go&logoColor=white) [![ci](https://github.com/takafumiokamoto/flac/actions/workflows/ci.yaml/badge.svg?branch=main)](https://github.com/takafumiokamoto/flac/actions/workflows/ci.yaml)
+
 # flac
 
 A pure Go FLAC ([RFC 9639](https://rfc-editor.org/rfc/rfc9639)) decoder with zero dependencies.
