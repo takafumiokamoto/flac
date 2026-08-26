@@ -1,10 +1,10 @@
 # flac
 
-A pure Go FLAC ([RFC 9639](https://rfc-editor.org/rfc/rfc9639)) decoder with zero dependencies and it's FAST.
+A pure Go FLAC ([RFC 9639](https://rfc-editor.org/rfc/rfc9639)) decoder with zero dependencies.
 
-## It's FAST.
+## Performance
 
-**1.5× faster, with 1/29 the memory and 1/90 the allocations**, compared to [mewkiz/flac@v1.0.14](https://github.com/mewkiz/flac).
+**1.5× faster, with 1/29 the allocated memory and 1/90 the allocations**, compared to [mewkiz/flac@v1.0.14](https://github.com/mewkiz/flac).
 
 The benchmark decodes `flac-test-files/subset/01 - blocksize 4096.flac` end to end.  
 Both decoders do: decode every frame, verify the frame header CRC-8 and frame footer CRC-16, and verify the MD5 of the decoded PCM.  
@@ -89,7 +89,9 @@ for {
 `Decoder` is an `io.Reader`, so the PCM can be copied into any `io.Writer` with `io.Copy(w, dec)`.
 
 ```go
-io.Copy(f, dec)
+if _, err := io.Copy(w, dec); err != nil {
+    log.Fatal(err)
+}
 ```
 
 ## Conformance test status
@@ -106,17 +108,22 @@ Tested against the IETF FLAC decoder testbench
 - the frame footer CRC-16 matches for every frame (§9.3)
 - the MD5 of the decoded PCM equals the checksum stored in STREAMINFO (§8.2)
 
+**uncommon**
+
+- same checks as `subset`
+- known limitation: files 10 and 11 begin without the `fLaC` marker, raw FLAC steams are not supported yet.
+
 **faulty**
 
 - The decoder does not crash or hang.
 
 ### Results
 
-| Group      | Files | Result         |
-| ---------- | ----: | -------------- |
-| `subset`   |    64 | **PASS**       |
-| `uncommon` |    11 | not tested yet |
-| `faulty`   |    11 | **PASS**       |
+| Group      | Files | Result   |
+| ---------- | ----: | -------- |
+| `subset`   |    64 | **PASS** |
+| `uncommon` |    11 | 9/11     |
+| `faulty`   |    11 | **PASS** |
 
 ### Reproduce
 
